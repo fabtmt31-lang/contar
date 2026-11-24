@@ -54,7 +54,7 @@ succès.
 import platform
 import shutil
 
-from app.config import BOOKS_DIR, COVERS_DIR, DB_PATH, MUSIC_DIR
+from app.config import BOOKS_DIR, COVERS_DIR, DB_PATH, LIBRARY_DIR, MUSIC_DIR
 from app.database import init_database
 from app.network_apply import forget_all_wifi_networks
 from app.settings import SettingsManager
@@ -93,9 +93,15 @@ def perform_factory_reset() -> tuple[bool, str]:
         _wipe_dir_contents(BOOKS_DIR)
         _wipe_dir_contents(MUSIC_DIR)
         _wipe_dir_contents(COVERS_DIR)
-        # Import par clé USB : plus rien en attente ni en réserve.
-        from app import usb_import
-        usb_import.wipe_work_dirs()
+        # Restes de l'ancien import par clé USB (avant la v0.11), s'il y en a.
+        from app import depot_import
+        depot_import.clean_old_work_dirs()
+        shutil.rmtree(LIBRARY_DIR / ".reserve", ignore_errors=True)
+
+        # Wi-Fi : revient à « activé », le réglage par défaut (v0.11).
+        if platform.system() == "Linux":
+            from app.power_settings import apply_wifi
+            apply_wifi(True)
 
         # 4. Point d'accès de secours : régénéré à partir des réglages
         # désormais vides (nouveau mot de passe aléatoire).

@@ -7,8 +7,13 @@ démarre ; les parents règlent tout depuis une page web.
 - **Installer ou mettre à jour** : `GUIDE_RASPBERRY.md`, puis
   `sudo bash install_pi.sh . gpio` (boutons câblés) ou
   `sudo bash install_pi.sh` (manette USB).
-- **Ouvrir l'administration** : `http://contar.local` (l'adresse s'affiche
-  aussi sur l'écran de la boîte au démarrage).
+- **Ouvrir l'administration** : `http://contar.local` par le Wi-Fi, ou
+  `http://10.55.0.1` en reliant la boîte à un ordinateur par son câble
+  USB-C (un disque « CONTAR » apparaît aussi, pour y déposer des histoires).
+- **Le geste de l'enfant (v0.11)** : poser un tag = ça joue ; le retirer =
+  pause et avancement retenu ; le reposer dans les 3 s = depuis le début.
+- **Tests** : `python -m pytest tests/` (VLC et ffmpeg nécessaires pour
+  le parcours complet).
 - **Ce qui a changé d'une version à l'autre** : `CHANGELOG.md`.
 
 > La suite de ce document est le journal de construction d'origine, du

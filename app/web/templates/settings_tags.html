@@ -1,11 +1,25 @@
 {% extends "app.html" %}
 {% from "_macros.html" import cover %}
 {% block title %}{{ _('Tags') }} — {{ APP_NAME }}{% endblock %}
+{% macro options_fields(prefix, resume, shuffle, loop) -%}
+  <div class="field-row">
+    <label for="{{ prefix }}-resume">{{ _('Reprendre où on en était') }}</label>
+    <input type="checkbox" id="{{ prefix }}-resume" name="resume" {{ 'checked' if resume else '' }}>
+  </div>
+  <div class="field-row">
+    <label for="{{ prefix }}-shuffle">{{ _('Ordre mélangé') }}</label>
+    <input type="checkbox" id="{{ prefix }}-shuffle" name="shuffle" {{ 'checked' if shuffle else '' }}>
+  </div>
+  <div class="field-row">
+    <label for="{{ prefix }}-loop">{{ _('Recommencer à la fin') }}</label>
+    <input type="checkbox" id="{{ prefix }}-loop" name="loop" {{ 'checked' if loop else '' }}>
+  </div>
+{%- endmacro %}
 {% block content %}
 <div class="page-head">
   <div class="page-head-text">
     <h1>{{ _('Tags') }}</h1>
-    <p class="lead">{{ _("Associez un tag à un livre ou à un album entier : l'enfant n'a plus qu'à le poser sur la boîte pour lancer la lecture. Un album reprend toujours au morceau où il s'était arrêté.") }}</p>
+    <p class="lead">{{ _("L'enfant pose un tag : son contenu joue. Il le retire : la lecture s'arrête et la boîte retient où il en était. Il le repose aussitôt : ça repart du début.") }}</p>
   </div>
   <button type="button" class="btn btn-primary" id="capture-start">{{ icon('plus', 18) }}<span>{{ _('Associer un tag') }}</span></button>
 </div>
@@ -19,8 +33,9 @@
   <h2>{{ _('Tag détecté') }} : <code id="assign-uid"></code></h2>
   <form method="post" action="{{ url_for('main.associate_tag') }}" id="assign-form" class="form">
     <input type="hidden" name="uid_tag" id="assign-uid-field">
+    <input type="hidden" name="options" value="1">
     <div class="field">
-      <label for="assign-target">{{ _('Associer à') }}</label>
+      <label for="assign-target">{{ _('Ce tag joue') }}</label>
       <select name="target" id="assign-target" required>
         <option value="" disabled selected>{{ _('— Choisir —') }}</option>
         {% if books %}
@@ -37,12 +52,21 @@
             {% endfor %}
           </optgroup>
         {% endif %}
+        {% if playlists %}
+          <optgroup label="{{ _('Listes') }}">
+            {% for playlist in playlists %}
+              <option value="playlist:{{ playlist['id'] }}">{{ playlist['name'] }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
       </select>
+      <p class="hint">{{ _("Pour une suite d'histoires ou un mélange d'histoires et de musiques, créez d'abord une liste dans Bibliothèque → Listes.") }}</p>
     </div>
     <div class="field">
       <label for="assign-name">{{ _('Nom du tag (facultatif)') }}</label>
       <input type="text" name="tag_name" id="assign-name" maxlength="40" placeholder="{{ _('ex : Loup bleu') }}">
     </div>
+    {{ options_fields('assign', true, false, false) }}
     <div class="btn-row"><button type="submit" class="btn btn-primary">{{ _('Associer') }}</button></div>
   </form>
 </section>
@@ -52,14 +76,26 @@
     <div class="section-label">{{ _('Tags associés') }}</div>
     <ul class="list">
       {% for assoc in associations %}
-        <li class="row">
+        <li class="row tag-row" id="tag-{{ assoc.uid_tag }}">
           <span class="row-main">
-            {{ cover(none, assoc.color_hex, 'book' if assoc.kind == 'book' else 'music') }}
+            {{ cover(none, assoc.color_hex, 'book' if assoc.kind == 'book' else ('list' if assoc.kind == 'playlist' else 'music')) }}
             <span class="row-text">
               <span class="row-title">{{ _(assoc.title) }}</span>
               <span class="row-sub">
                 {% if assoc.tag_name %}<strong class="tag-name">{{ assoc.tag_name }}</strong><span>·</span>{% endif %}
-                <span>{{ _('Histoire') if assoc.kind == 'book' else _('Album') }}</span><span>·</span><code>{{ assoc.uid_tag }}</code>
+                <span>{{ {'book': _('Histoire'), 'album': _('Album'), 'playlist': _('Liste')}[assoc.kind] }}</span><span>·</span><code>{{ assoc.uid_tag }}</code>
+                {% if assoc.uid_tag == present_uid %}<span>·</span><strong>{{ _('posé sur la boîte') }}</strong>{% endif %}
+              </span>
+              <span class="row-sub">
+                {% if assoc.progress %}
+                  {% if assoc.progress.total > 1 %}
+                    <span>{{ _('En cours : {i} sur {n}, à {t}', i=assoc.progress.index, n=assoc.progress.total, t=assoc.progress.position) }}</span>
+                  {% else %}
+                    <span>{{ _('En cours : à {t}', t=assoc.progress.position) }}</span>
+                  {% endif %}
+                {% else %}
+                  <span>{{ _('Repartira du début') }}</span>
+                {% endif %}
               </span>
             </span>
           </span>
@@ -70,12 +106,28 @@
               <input type="hidden" name="tag_name" value="">
               <button type="submit" class="btn btn-ghost">{{ _('Renommer') if assoc.tag_name else _('Nommer') }}</button>
             </form>
+            {% if assoc.progress %}
+              <form method="post" action="{{ url_for('main.reset_tag_progress') }}">
+                <input type="hidden" name="uid_tag" value="{{ assoc.uid_tag }}">
+                <button type="submit" class="btn btn-ghost">{{ _('Remettre à zéro') }}</button>
+              </form>
+            {% endif %}
             <form method="post" action="{{ url_for('main.dissociate_tag') }}"
                   onsubmit='return confirm({{ _("Dissocier ce tag ?")|tojson }})'>
               <input type="hidden" name="uid_tag" value="{{ assoc.uid_tag }}">
               <button type="submit" class="btn btn-ghost-danger">{{ _('Dissocier') }}</button>
             </form>
           </span>
+          <details class="tag-options">
+            <summary>{{ _('Façon de jouer') }} :
+              {{ _('reprise') if assoc.resume else _('toujours au début') }}{% if assoc.shuffle %}, {{ _('mélangé') }}{% endif %}{% if assoc.loop %}, {{ _('en boucle') }}{% endif %}
+            </summary>
+            <form method="post" action="{{ url_for('main.set_tag_options') }}" class="form">
+              <input type="hidden" name="uid_tag" value="{{ assoc.uid_tag }}">
+              {{ options_fields('opt-' ~ loop.index, assoc.resume, assoc.shuffle, assoc.loop) }}
+              <div class="btn-row"><button type="submit" class="btn btn-outline">{{ _('Enregistrer') }}</button></div>
+            </form>
+          </details>
         </li>
       {% endfor %}
     </ul>
@@ -84,7 +136,21 @@
   <div class="empty"><p>{{ _("Aucun tag associé pour l'instant.") }}</p></div>
 {% endif %}
 
-{% include "_master_tags.html" %}
+<section class="card">
+  <h2>{{ _('Reposer le tag pour recommencer') }}</h2>
+  <form method="post" action="{{ url_for('main.set_tag_gesture') }}" class="form">
+    <div class="field-row">
+      <label for="double_enabled">{{ _('Reposer vite le tag remet à zéro') }}</label>
+      <input type="checkbox" id="double_enabled" name="double_enabled" {{ 'checked' if double_enabled else '' }}>
+    </div>
+    <div class="field-row">
+      <label for="double_window">{{ _('Délai pour reposer le tag (secondes)') }}</label>
+      <input type="number" id="double_window" name="double_window" min="1" max="10" step="0.5" value="{{ '%g' % double_window }}">
+    </div>
+    <p class="hint">{{ _("Si le tag est reposé moins de {n} secondes après avoir été retiré, l'histoire repart du début (un petit son le confirme). Au-delà, elle reprend où elle s'était arrêtée. Décochez si l'enfant manipule beaucoup ses tags.", n='%g' % double_window) }}</p>
+    <div class="btn-row"><button type="submit" class="btn btn-outline">{{ _('Enregistrer') }}</button></div>
+  </form>
+</section>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -94,8 +160,7 @@
     cancel: "{{ url_for('main.cancel_tag_capture') }}"
   };
   window.TAGS_TEXT = {
-    waiting: {{ _('Posez le tag à associer sur le lecteur…')|tojson }},
-    waitingMaster: {{ _('Posez le tag maître sur le lecteur…')|tojson }}
+    waiting: {{ _('Posez le tag à associer sur le lecteur…')|tojson }}
   };
 </script>
 <script src="{{ url_for('static', filename='js/tags.js') }}?v={{ APP_VERSION }}"></script>

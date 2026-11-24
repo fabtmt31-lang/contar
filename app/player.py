@@ -17,6 +17,7 @@ version Android : lancer une nouvelle lecture remplace toujours la précédente.
 """
 
 import math
+import os
 import platform
 import random
 import threading
@@ -58,7 +59,9 @@ class PlayerController:
         # Windows/Mac (mode PC de développement), où ce module n'existe
         # pas — VLC y garde son choix de sortie audio habituel.
         vlc_args = ["--no-video"]
-        if platform.system() == "Linux":
+        if os.environ.get("CONTAR_VLC_AOUT"):
+            vlc_args.append(f"--aout={os.environ['CONTAR_VLC_AOUT']}")   # ex. « dummy » pour les tests
+        elif platform.system() == "Linux":
             vlc_args.append("--aout=alsa")
 
         # ---- Minuterie de coucher (v0.10) ---------------------------------
@@ -71,8 +74,7 @@ class PlayerController:
         self._sleep_deadline: Optional[float] = None
         self._sleep_auto = False
         self._sleep_fade_from: Optional[int] = None   # volume d'avant la baisse, à rétablir
-        # Fonctions appelées quand la minuterie arrête la lecture (l'écran
-        # LCD s'y inscrit, voir app/lcd_display.py::start).
+        # Fonctions appelées quand la minuterie arrête la lecture.
         self.sleep_listeners: list = []
 
         self._instance = vlc.Instance(*vlc_args)
@@ -97,6 +99,15 @@ class PlayerController:
         self._queue_position: int = -1
         self._loop: bool = False
         self._shuffle: bool = False
+        # Contexte de la file (v0.11) : "tag:<UID>" quand c'est un tag qui
+        # l'a lancée (voir app/tag_playback.py), None sinon. Le lecteur ne
+        # sait rien des tags : il transmet seulement ce repère à ceux qui
+        # suivent l'avancement.
+        self._context: Optional[str] = None
+        # Appelées chaque seconde pendant la lecture avec snapshot(), et une
+        # fois quand une file arrive à son terme (avec son contexte).
+        self.progress_listeners: list = []
+        self.queue_end_listeners: list = []
 
         self._stop_event = threading.Event()
         self._save_thread = threading.Thread(target=self._save_loop, daemon=True)
@@ -117,49 +128,133 @@ class PlayerController:
             if row is None:
                 return False
 
-            self._persist_last_played(kind, item_id)
-
             if from_playlist_id is None:
-                # Lecture manuelle d'un livre/morceau isolé : on sort d'un
-                # éventuel contexte de liste de lecture en cours, sinon elle
-                # reprendrait la main au prochain élément "terminé".
-                self._playlist_id = None
-                self._queue = []
-                self._queue_position = -1
+                # Lecture manuelle d'un livre/morceau isolé : on sort d'une
+                # éventuelle file en cours (liste de lecture ou tag), sinon
+                # elle reprendrait la main au prochain élément "terminé".
+                already_loaded = self._kind == kind and self._item_id == item_id and not self._queue
+                self._clear_queue()
+                if already_loaded:
+                    # Déjà chargé : on se contente de relancer la lecture, comme
+                    # togglePlayPause côté Android quand isActive est déjà vrai.
+                    self._persist_last_played(kind, item_id)
+                    self._player.play()
+                    self._arm_sleep_timer()
+                    return True
             else:
                 self._playlist_id = from_playlist_id
+                self._context = None
 
-            if self._kind == kind and self._item_id == item_id and from_playlist_id is None:
-                # Déjà chargé : on se contente de relancer la lecture, comme
-                # togglePlayPause côté Android quand isActive est déjà vrai.
-                self._player.play()
-                self._arm_sleep_timer()
-                return True
+            return self._load(row, kind, item_id, row["position_ms"] or 0)
 
-            # On sauvegarde la progression de ce qui était en cours avant de le remplacer.
+    def _load(self, row, kind: Kind, item_id: int, start_ms: int) -> bool:
+        """Remplace le média en cours par celui-ci et le lance à start_ms."""
+        self._persist_last_played(kind, item_id)
+        # On sauvegarde la progression de ce qui était en cours avant de le remplacer.
+        self._save_progress()
+
+        self._player.stop()
+        media = self._instance.media_new(row["file_path"])
+        self._player.set_media(media)
+        self._kind = kind
+        self._item_id = item_id
+        self._title = row["title"]
+        self._subtitle = row["author"] if kind == "book" else (row["artist"] or "")
+        self._duration_ms = row["duration_ms"] or 0
+
+        self._player.play()
+
+        if start_ms > 0:
+            # VLC a besoin d'un court instant après play() pour que set_time
+            # soit pris en compte de façon fiable.
+            time.sleep(0.1)
+            self._player.set_time(start_ms)
+
+        self._last_back_press_at = 0.0  # nouveau média : on oublie un éventuel double-appui en attente
+        self._arm_sleep_timer()
+        return True
+
+    def _clear_queue(self) -> None:
+        self._playlist_id = None
+        self._queue = []
+        self._queue_position = -1
+        self._context = None
+
+    def play_queue(self, queue: list, index: int = 0, position_ms: int = 0, *,
+                   loop: bool = False, shuffle: bool = False, context: Optional[str] = None) -> bool:
+        """
+        Lance une file (v0.11) : une suite de (kind, item_id) déjà dans
+        l'ordre voulu, à partir de l'élément « index », à « position_ms ».
+        Utilisé par les tags (app/tag_playback.py), qui gardent eux-mêmes
+        leur avancement : la position enregistrée dans le livre n'est pas
+        utilisée ici. À la fin de la file : boucle (remélangée si
+        « shuffle ») ou arrêt, puis queue_end_listeners.
+        """
+        with self._lock:
+            if not queue:
+                return False
+            index = max(0, min(int(index), len(queue) - 1))
+            kind, item_id = queue[index]
+            row = self._fetch_item(kind, item_id)
+            if row is None:
+                return False
+            self._queue = [(k, int(i)) for k, i in queue]
+            self._queue_position = index
+            self._loop = loop
+            self._shuffle = shuffle
+            self._playlist_id = None
+            self._context = context
+            return self._load(row, kind, item_id, max(0, int(position_ms)))
+
+    def snapshot(self) -> Optional[dict]:
+        """Où en est la file en cours (pour l'enregistrer), ou None si
+        rien n'est chargé."""
+        with self._lock:
+            if self._kind is None:
+                return None
+            return {
+                "context": self._context,
+                "queue": list(self._queue),
+                "index": self._queue_position,
+                "kind": self._kind,
+                "item_id": self._item_id,
+                "position_ms": max(self._player.get_time(), 0),
+                "is_playing": bool(self._player.is_playing()),
+            }
+
+    def current_context(self) -> Optional[str]:
+        with self._lock:
+            return self._context if self._kind is not None else None
+
+    def fade_pause(self, seconds: float = 0.4) -> None:
+        """Pause en douceur (tag retiré) : le son baisse en « seconds »,
+        puis la lecture s'arrête et le volume est rétabli pour la reprise."""
+        with self._lock:
+            if self._kind is None or not self._player.is_playing():
+                return
+            start = self._player.audio_get_volume()
+            steps = 8
+            if start > 0:
+                for step in range(steps, 0, -1):
+                    self._player.audio_set_volume(int(start * (step - 1) / steps))
+                    time.sleep(seconds / steps)
+            self._player.pause()
+            if start >= 0:
+                self._player.audio_set_volume(start)
+            self._disarm_sleep_timer()
             self._save_progress()
 
-            self._player.stop()
-            media = self._instance.media_new(row["file_path"])
-            self._player.set_media(media)
-            self._kind = kind
-            self._item_id = item_id
-            self._title = row["title"]
-            self._subtitle = row["author"] if kind == "book" else (row["artist"] or "")
-            self._duration_ms = row["duration_ms"] or 0
-
-            self._player.play()
-
-            start_position = row["position_ms"] or 0
-            if start_position > 0:
-                # VLC a besoin d'un court instant après play() pour que set_time
-                # soit pris en compte de façon fiable.
-                time.sleep(0.1)
-                self._player.set_time(start_position)
-
-            self._last_back_press_at = 0.0  # nouveau média : on oublie un éventuel double-appui en attente
+    def resume_with_rewind(self, rewind_ms: int = 0) -> bool:
+        """Reprend ce qui est chargé, en reculant un peu pour retrouver le
+        fil. False si rien n'est chargé."""
+        with self._lock:
+            if self._kind is None:
+                return False
+            if rewind_ms > 0:
+                self._player.set_time(max(0, self._player.get_time() - rewind_ms))
+            if not self._player.is_playing():
+                self._player.play()
             self._arm_sleep_timer()
-
             return True
 
     def toggle_play_pause(self) -> None:
@@ -208,9 +303,7 @@ class PlayerController:
             self._title = ""
             self._subtitle = ""
             self._duration_ms = 0
-            self._playlist_id = None
-            self._queue = []
-            self._queue_position = -1
+            self._clear_queue()
 
     # ---- Navigation -------------------------------------------------------
 
@@ -249,6 +342,8 @@ class PlayerController:
         morceau de l'album.
         """
         with self._lock:
+            if self._queue:
+                return self._queue_step(+1)
             if self._kind != "track" or self._item_id is None:
                 return False
             conn = get_connection()
@@ -271,6 +366,8 @@ class PlayerController:
     def previous_track(self) -> bool:
         """Revient au morceau précédent du même album. Sans effet pour un livre."""
         with self._lock:
+            if self._queue:
+                return self._queue_step(-1)
             if self._kind != "track" or self._item_id is None:
                 return False
             conn = get_connection()
@@ -289,6 +386,23 @@ class PlayerController:
             if prev is None:
                 return False
             return self.play("track", prev["id"])
+
+    def _queue_step(self, delta: int) -> bool:
+        """Élément suivant (+1) ou précédent (-1) de la file en cours."""
+        target = self._queue_position + delta
+        if target >= len(self._queue):
+            if not self._loop:
+                return False
+            target = 0
+        if target < 0:
+            return False
+        kind, item_id = self._queue[target]
+        row = self._fetch_item(kind, item_id)
+        if row is None:
+            return False
+        self._queue_position = target
+        self._reset_position(kind, item_id)
+        return self._load(row, kind, item_id, 0)
 
     def skip_forward(self) -> None:
         """Bouton ⟳ : morceau suivant pour une musique, avance de 10s pour un livre (inchangé)."""
@@ -529,27 +643,48 @@ class PlayerController:
 
     def _advance_queue(self) -> None:
         """
-        Appelée quand l'élément en cours dans une liste de lecture vient
-        de se terminer naturellement : passe automatiquement au suivant.
-        Respecte le mode aléatoire (déjà mélangé au lancement, remélangé
-        à chaque tour en mode boucle, pour ne pas rejouer le même ordre en
-        boucle) et le mode boucle (sinon, s'arrête proprement à la fin).
+        Appelée quand l'élément en cours d'une file (liste de lecture ou
+        tag) vient de se terminer naturellement : passe automatiquement au
+        suivant. Respecte le mode aléatoire (déjà mélangé au lancement,
+        remélangé à chaque tour en mode boucle, pour ne pas rejouer le même
+        ordre en boucle) et le mode boucle (sinon, s'arrête proprement à la
+        fin). Un élément supprimé entre-temps est sauté.
         """
-        if self._playlist_id is None or not self._queue:
+        if not self._queue:
             return
 
-        self._queue_position += 1
-        if self._queue_position >= len(self._queue):
-            if not self._loop:
-                self.stop()
-                return
-            self._queue_position = 0
-            if self._shuffle:
-                random.shuffle(self._queue)
+        for _attempt in range(len(self._queue) + 1):
+            self._queue_position += 1
+            if self._queue_position >= len(self._queue):
+                if not self._loop:
+                    context = self._context
+                    self.stop()
+                    self._notify_queue_end(context)
+                    return
+                self._queue_position = 0
+                if self._shuffle:
+                    random.shuffle(self._queue)
 
-        kind, item_id = self._queue[self._queue_position]
-        self._reset_position(kind, item_id)
-        self.play(kind, item_id, from_playlist_id=self._playlist_id)
+            kind, item_id = self._queue[self._queue_position]
+            row = self._fetch_item(kind, item_id)
+            if row is None:
+                continue
+            self._reset_position(kind, item_id)
+            if self._playlist_id is not None:
+                self.play(kind, item_id, from_playlist_id=self._playlist_id)
+            else:
+                self._load(row, kind, item_id, 0)
+            return
+        context = self._context
+        self.stop()
+        self._notify_queue_end(context)
+
+    def _notify_queue_end(self, context: Optional[str]) -> None:
+        for listener in list(self.queue_end_listeners):
+            try:
+                listener(context)
+            except Exception as exc:
+                print(f"[lecteur] {exc}")
 
     def _reset_position(self, kind: Kind, item_id: int) -> None:
         """Remet un livre/morceau à zéro avant de le lancer depuis une
@@ -578,6 +713,9 @@ class PlayerController:
                 "duration_ms": self._current_duration_ms(),
                 "volume": self._user_volume(),
                 "playlist_id": self._playlist_id,
+                "context": self._context,
+                "queue_index": self._queue_position if self._queue else None,
+                "queue_length": len(self._queue),
                 "sleep_remaining_s": self.sleep_remaining_seconds(),
             }
 
@@ -634,7 +772,11 @@ class PlayerController:
             return False
         position_ms = max(self._player.get_time(), 0)
         duration_ms = self._current_duration_ms()
-        finished = duration_ms > 0 and position_ms >= duration_ms - FINISHED_MARGIN_MS
+        if self._player.get_state() == vlc.State.Ended:
+            position_ms = duration_ms
+            finished = True
+        else:
+            finished = duration_ms > 0 and position_ms >= duration_ms - FINISHED_MARGIN_MS
 
         conn = get_connection()
         table = "books" if self._kind == "book" else "tracks"
@@ -657,14 +799,19 @@ class PlayerController:
         """
         while not self._stop_event.is_set():
             with self._lock:
-                if self._kind is not None and self._player.is_playing():
+                # « Ended » : VLC a atteint la fin du fichier et ne joue plus.
+                # Avant la v0.11, seul « en lecture » était surveillé : la fin
+                # n'était vue que si ce tour tombait dans la dernière
+                # demi-seconde, et un album s'arrêtait une fois sur deux.
+                ended = self._kind is not None and self._player.get_state() == vlc.State.Ended
+                if self._kind is not None and (self._player.is_playing() or ended):
                     finished = self._save_progress()
                     if finished:
                         # Enchaînement automatique : il ne relance pas la
                         # minuterie de coucher (voir _arm_sleep_timer()).
                         self._sleep_auto = True
                         try:
-                            if self._playlist_id is not None:
+                            if self._queue:
                                 self._advance_queue()
                             elif self._kind == "track":
                                 # Comportement par défaut pour la musique (hors
@@ -677,6 +824,15 @@ class PlayerController:
                             self._sleep_auto = False
                     if self._kind is not None and self._player.is_playing():
                         self._check_sleep_timer()
+                    snapshot = self.snapshot() if self.progress_listeners else None
+                else:
+                    snapshot = None
+            if snapshot is not None:
+                for listener in list(self.progress_listeners):
+                    try:
+                        listener(snapshot)
+                    except Exception as exc:
+                        print(f"[lecteur] {exc}")
             time.sleep(SAVE_INTERVAL_SECONDS)
 
     def shutdown(self) -> None:

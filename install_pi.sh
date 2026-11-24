@@ -22,6 +22,10 @@
 # à la racine du projet (à côté de run_pi.py, requirements.txt, etc.).
 # Si aucun mode n'est donné, "gamepad" est utilisé par défaut.
 #
+# Lecteur NFC PN532 (v0.11) : en SPI par défaut, ce qui libère la broche
+# GPIO 3 pour le bouton de réveil. Pour une boîte encore câblée en I2C :
+#   sudo NFC_BUS=i2c bash install_pi.sh . gpio
+#
 # Exemples :
 #   sudo bash install_pi.sh                        # mode manette, chemin auto
 #   sudo bash install_pi.sh . gpio                  # mode GPIO, projet dans le dossier courant
@@ -60,6 +64,17 @@ fi
 APP_USER="contar"
 APP_DIR="/opt/contar"
 SERVICE_NAME="contar"
+NFC_BUS="${NFC_BUS:-}"
+if [ -z "$NFC_BUS" ] && [ -f /etc/default/contar ]; then
+    # Réinstallation / mise à jour : on garde le choix fait la première fois.
+    NFC_BUS=$(sed -n 's/^CONTAR_NFC_BUS=//p' /etc/default/contar | tail -n 1)
+fi
+NFC_BUS="${NFC_BUS:-spi}"
+if [ "$NFC_BUS" != "spi" ] && [ "$NFC_BUS" != "i2c" ]; then
+    echo "Bus NFC inconnu : '$NFC_BUS' (attendu : spi ou i2c)" >&2
+    exit 1
+fi
+DEPOT_MB="${DEPOT_MB:-4096}"     # taille du disque de dépôt USB-C (fichier creux)
 
 if [ "$CONTROL_MODE" = "gamepad" ]; then
     RUN_SCRIPT="run_pi_gamepad.py"
@@ -132,7 +147,8 @@ apt-get install -y --no-install-recommends \
     swig \
     i2c-tools \
     iw \
-    nftables
+    nftables \
+    dosfstools
 
 # ---------------------------------------------------------------------------
 # 4. mDNS (http://<nom>.local) : nécessite avahi-daemon actif.
@@ -186,6 +202,10 @@ fi
 # groupes GPIO et input dans tous les cas : ça ne coûte rien et permet de
 # rejouer ce script plus tard avec l'autre mode sans souci de permissions.
 usermod -aG audio,gpio,input "$APP_USER"
+# video -> vcgencmd (détection d'une alimentation trop faible, v0.11) ;
+# spi -> lecteur NFC PN532 en SPI (v0.11).
+usermod -aG video "$APP_USER" 2>/dev/null || true
+if getent group spi >/dev/null; then usermod -aG spi "$APP_USER"; fi
 
 # 6. Copie du projet
 # ---------------------------------------------------------------------------
@@ -284,14 +304,13 @@ if [ "$MIGRATED" -eq 1 ]; then
     fi
 fi
 
-if [ "$CONTROL_MODE" = "gpio" ]; then
-    # lgpio est déjà installé juste au-dessus (wheel précompilé) dans la
-    # quasi-totalité des cas — cet appel ne fait donc normalement rien de
-    # plus ("already satisfied"), gardé comme filet de sécurité si jamais
-    # le wheel précompilé n'était pas accessible au moment de l'install.
-    sudo -u "$APP_USER" "$APP_DIR/venv/bin/pip" install lgpio || \
-        echo "[!] Installation de lgpio échouée — si gpiozero ne trouve pas de broches au démarrage, voir GUIDE_RASPBERRY.md (section dépannage)."
-else
+# lgpio sert dans les deux modes depuis la v0.11 (voyants, bouton de réveil,
+# sélection du lecteur NFC en SPI). Déjà installé juste au-dessus (wheel
+# précompilé) dans la quasi-totalité des cas : filet de sécurité.
+sudo -u "$APP_USER" "$APP_DIR/venv/bin/pip" install lgpio || \
+    echo "[!] Installation de lgpio échouée — si gpiozero ne trouve pas de broches au démarrage, voir GUIDE_RASPBERRY.md (section dépannage)."
+
+if [ "$CONTROL_MODE" = "gamepad" ]; then
     # "inputs" est déjà dans requirements.txt (installé juste au-dessus) :
     # rien de plus à faire côté paquets pour le mode manette.
     log "Mode manette USB : configuration de l'accès direct au périphérique..."
@@ -363,17 +382,28 @@ EOF
 chmod 440 /etc/sudoers.d/contar-energie
 visudo -c -f /etc/sudoers.d/contar-energie
 
-# Import par clé USB (v0.9) : l'appli tourne sans droits root et ne peut
-# donc pas relier une clé elle-même. Ce script le fait pour elle, toujours
-# en lecture seule, et refuse tout ce qui n'est pas une clé USB — voir
-# bin/usb-key.sh et app/usb_import.py.
-log "Autorisation de lire une clé USB (sudoers)..."
-chmod +x "$APP_DIR/bin/usb-key.sh"
-cat > /etc/sudoers.d/contar-cle-usb <<EOF
-$APP_USER ALL=(root) NOPASSWD: $APP_DIR/bin/usb-key.sh
+# Câble USB-C (v0.11) : reprendre le disque de dépôt, le monter, le vider,
+# le rendre à l'ordinateur — UNIQUEMENT via ce script. Voir bin/usb-gadget.sh.
+# L'ancienne autorisation de l'import par clé USB (v0.9–v0.10) est retirée.
+rm -f /etc/sudoers.d/contar-cle-usb
+log "Autorisation du câble USB-C (sudoers)..."
+chmod +x "$APP_DIR/bin/usb-gadget.sh"
+cat > /etc/sudoers.d/contar-usb <<EOF
+$APP_USER ALL=(root) NOPASSWD: $APP_DIR/bin/usb-gadget.sh
 EOF
-chmod 440 /etc/sudoers.d/contar-cle-usb
-visudo -c -f /etc/sudoers.d/contar-cle-usb
+chmod 440 /etc/sudoers.d/contar-usb
+visudo -c -f /etc/sudoers.d/contar-usb
+
+# Mise à jour depuis GitHub (v0.11, Réglages → Mise à jour) : installer
+# l'archive téléchargée par l'appli — UNIQUEMENT via ce script, qui
+# n'accepte qu'une archive rangée dans $APP_DIR/data/maj/.
+log "Autorisation de la mise à jour (sudoers)..."
+chmod +x "$APP_DIR/bin/update-contar.sh"
+cat > /etc/sudoers.d/contar-maj <<EOF
+$APP_USER ALL=(root) NOPASSWD: $APP_DIR/bin/update-contar.sh
+EOF
+chmod 440 /etc/sudoers.d/contar-maj
+visudo -c -f /etc/sudoers.d/contar-maj
 
 # ---------------------------------------------------------------------------
 # 9. Point d'accès Wifi de secours ("Wifi Direct")
@@ -546,11 +576,85 @@ systemctl restart contar-ampli.service 2>/dev/null || true
 # 11. Service systemd principal
 # ---------------------------------------------------------------------------
 
+log "Réglages du service (/etc/default/contar)..."
+cat > /etc/default/contar <<EOF
+# Contar — réglages matériels lus par le service (install_pi.sh).
+# Lecteur NFC PN532 : spi (par défaut depuis la v0.11) ou i2c.
+CONTAR_NFC_BUS=$NFC_BUS
+# Taille du disque de dépôt USB-C, en Mo (pris sur la carte à l'usage seulement).
+CONTAR_DEPOT_MB=$DEPOT_MB
+EOF
+
+# ---------------------------------------------------------------------------
+# 10 bis. Câble USB-C : carte réseau + disque de dépôt (v0.11)
+# ---------------------------------------------------------------------------
+# Le port USB-C du Pi 4 (son port d'alimentation) se présente à un ordinateur
+# comme une carte réseau et un petit disque « CONTAR » (bin/usb-gadget.sh).
+# Réseau : un pont « br-contar » (10.55.0.1) réunit les deux variantes de
+# carte réseau (RNDIS pour Windows, ECM pour macOS/Linux) ; un petit serveur
+# DHCP y distribue une adresse à l'ordinateur, SANS se déclarer passerelle
+# ni serveur de noms : l'ordinateur garde son propre accès à Internet.
+log "Câble USB-C : carte réseau et disque de dépôt..."
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/contar-usb.conf <<'EOF'
+# Contar : interfaces du câble USB-C, réglées par bin/usb-gadget.sh.
+[keyfile]
+unmanaged-devices=interface-name:usb0;interface-name:usb1;interface-name:br-contar
+EOF
+systemctl reload NetworkManager 2>/dev/null || true
+
+cat > /etc/systemd/system/contar-usb-gadget.service <<EOF
+[Unit]
+Description=Contar - câble USB-C (carte réseau + disque de dépôt)
+After=local-fs.target sys-kernel-config.mount
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/contar
+ExecStart=$APP_DIR/bin/usb-gadget.sh setup
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/contar-usb-dhcp.service <<'EOF'
+[Unit]
+Description=Contar - adresse pour l'ordinateur relié par le câble USB-C
+After=contar-usb-gadget.service
+Requires=contar-usb-gadget.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/dev/null --port=0 \
+    --interface=br-contar --bind-dynamic --dhcp-authoritative \
+    --dhcp-range=10.55.0.2,10.55.0.6,255.255.255.248,1h \
+    --dhcp-option=3 --dhcp-option=6 \
+    --dhcp-leasefile=/run/contar-usb-dhcp.leases --pid-file=/run/contar-usb-dhcp.pid
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable contar-usb-gadget.service contar-usb-dhcp.service
+# Le contrôleur USB-C n'est en mode périphérique qu'après le redémarrage qui
+# suit l'ajout de dwc2 dans config.txt (section 12) : un échec ici est normal
+# lors de la toute première installation.
+systemctl restart contar-usb-gadget.service 2>/dev/null || \
+    echo "[i] Câble USB-C pas encore actif : il le sera après le redémarrage."
+systemctl restart contar-usb-dhcp.service 2>/dev/null || true
+
 log "Installation du service systemd $SERVICE_NAME..."
 cat > /etc/systemd/system/"$SERVICE_NAME".service <<EOF
 [Unit]
 Description=Contar - serveur applicatif (Raspberry Pi, mode $CONTROL_MODE)
-After=network.target sound.target
+# Pas d'attente du réseau (v0.11) : la boîte doit jouer le plus tôt
+# possible après la pose d'un tag ; le serveur web écoute toutes les
+# adresses, y compris celles qui arrivent après lui.
+After=sound.target local-fs.target contar-usb-gadget.service
 Wants=sound.target
 
 [Service]
@@ -559,6 +663,7 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/contar
 # Port 80 (adresse sans numéro de port : http://contar.local). Ce port est
 # réservé à root ; cette ligne en donne le droit, et lui seul, au service.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -576,7 +681,8 @@ systemctl enable "$SERVICE_NAME".service
 systemctl restart "$SERVICE_NAME".service
 
 # ---------------------------------------------------------------------------
-# 12. Optimisations matérielles (Bluetooth, LEDs, caméra/écran) + I2C
+# 12. Optimisations matérielles (Bluetooth, LEDs, caméra/écran), lecteur
+#     NFC (SPI ou I2C), câble USB-C (dwc2)
 # ---------------------------------------------------------------------------
 # Désactivations permanentes au niveau matériel, décidées pour réduire la
 # chaleur et la consommation (objectif à terme : fonctionnement sur
@@ -591,15 +697,13 @@ systemctl restart "$SERVICE_NAME".service
 # - LEDs d'activité/alimentation : objet posé dans une chambre d'enfant,
 #   une LED qui clignote en continu la nuit n'a rien d'un avantage.
 # - Détection caméra/écran (firmware Bookworm+) : la boîte n'utilise
-#   jamais ni caméra ni écran branché en direct sur le Pi (l'écran LCD
-#   prévu se pilote en I2C, pas via cette détection-là) — évite un
+#   jamais ni caméra ni écran branché en direct sur le Pi — évite un
 #   sondage inutile à chaque démarrage.
-# - I2C : activé (dtparam=i2c_arm=on), CETTE FOIS pour ajouter du
-#   matériel plutôt qu'en retirer — bus partagé par le lecteur NFC PN532
-#   (app/tag_reader.py::PN532Reader) et l'écran LCD (app/lcd_display.py),
-#   chacun à sa propre adresse. $APP_USER ajouté au groupe "i2c" pour
-#   accéder à /dev/i2c-1 sans root (device déjà réservé à ce groupe par
-#   défaut sur Raspberry Pi OS).
+# - Lecteur NFC PN532 (v0.11) : en SPI (dtparam=spi=on) par défaut ; l'I2C
+#   n'est plus activé que si NFC_BUS=i2c (boîte pas encore recâblée), car
+#   il occupe la GPIO 3, broche du bouton de réveil. L'écran LCD est retiré.
+# - dtoverlay=dwc2,dr_mode=peripheral (v0.11) : le port USB-C se présente
+#   à un ordinateur comme une carte réseau et un disque (section 10 bis).
 # Redémarrage nécessaire pour que ces changements prennent effet — pas
 # fait automatiquement ici, pour ne jamais couper une boîte déjà en
 # cours d'utilisation en plein milieu d'une installation.
@@ -619,20 +723,35 @@ if [ -n "$CONFIG_TXT" ]; then
     # « MAX98357A », que la boîte choisit d'elle-même pour ses
     # haut-parleurs (app/audio_output.py). Sans ampli branché, cette ligne
     # est sans effet audible.
-    log "Optimisations matérielles (Bluetooth, LEDs, caméra/écran) + I2C + ampli dans $CONFIG_TXT..."
+    log "Optimisations matérielles (Bluetooth, LEDs, caméra/écran) + lecteur NFC + câble USB-C + ampli dans $CONFIG_TXT..."
     for LINE in \
         "dtoverlay=disable-bt" \
         "dtparam=act_led_trigger=none" \
         "dtparam=pwr_led_trigger=none" \
         "camera_auto_detect=0" \
         "display_auto_detect=0" \
-        "dtparam=i2c_arm=on" \
+        "disable_splash=1" \
+        "boot_delay=0" \
+        "dtoverlay=dwc2,dr_mode=peripheral" \
         "dtoverlay=max98357a,no-sdmode"
     do
         grep -qxF "$LINE" "$CONFIG_TXT" || echo "$LINE" >> "$CONFIG_TXT"
     done
+    # Lecteur NFC (v0.11) : SPI par défaut. L'I2C n'est gardé que pour une
+    # boîte encore câblée ainsi : il occupe la GPIO 3, celle du bouton de réveil.
+    if [ "$NFC_BUS" = "spi" ]; then
+        grep -qxF "dtparam=spi=on" "$CONFIG_TXT" || echo "dtparam=spi=on" >> "$CONFIG_TXT"
+        sed -i 's/^dtparam=i2c_arm=on$/#dtparam=i2c_arm=on  # Contar v0.11 : lecteur NFC en SPI/' "$CONFIG_TXT"
+    else
+        grep -qxF "dtparam=i2c_arm=on" "$CONFIG_TXT" || echo "dtparam=i2c_arm=on" >> "$CONFIG_TXT"
+    fi
     systemctl disable --now hciuart 2>/dev/null || true
     systemctl disable --now bluetooth 2>/dev/null || true
+    # Démarrage plus rapide (v0.11) : la boîte s'allume quand on pose un tag,
+    # chaque seconde compte. Services sans usage ici, s'ils sont installés.
+    for UNIT in ModemManager triggerhappy cups cups-browsed NetworkManager-wait-online; do
+        systemctl disable --now "$UNIT" 2>/dev/null || true
+    done
     usermod -aG i2c "$APP_USER" 2>/dev/null || true
     # dtparam=i2c_arm=on active le contrôleur I2C matériel, mais ne crée
     # PAS /dev/i2c-1 à lui seul : il faut aussi charger le module noyau
@@ -675,12 +794,15 @@ Administration, depuis un téléphone, une tablette ou un ordinateur relié
 au même réseau :
   http://$(hostname).local
   http://${IP_ADDR:-<adresse-de-la-boîte>}        (si la première ne répond pas)
-Cette adresse s'affiche aussi sur l'écran de la boîte au démarrage.
+
+Ou, sans Wifi, en reliant la boîte à un ordinateur par son câble USB-C :
+  http://10.55.0.1          (un disque « CONTAR » apparaît aussi, pour y
+                             déposer des histoires et des musiques)
 
 Si la boîte n'arrive pas à rejoindre le Wifi de la maison (pas encore
 réglé, ou hors de portée), elle ouvre au bout d'une minute environ son
 propre réseau Wifi de secours : « Contar-Secours », mot de passe
-« audiolibre » par défaut (les deux s'affichent sur son écran). Reliez-y
+« audiolibre » par défaut. Reliez-y
 un téléphone : la page de la boîte s'ouvre en général toute seule ; sinon,
 ouvrez http://10.42.0.1.
 
@@ -701,9 +823,9 @@ if [ "${REBOOT_NEEDED:-0}" = "1" ]; then
     cat <<EOF
 
 ⚠ Un redémarrage est nécessaire (une seule fois) pour que les
-optimisations matérielles (Bluetooth désactivé, LEDs éteintes, détection
-caméra/écran désactivée) et l'activation de l'I2C (lecteur NFC PN532 +
-écran LCD) prennent effet :
+optimisations matérielles (Bluetooth désactivé, LEDs de la carte éteintes,
+détection caméra/écran désactivée), le lecteur NFC ($NFC_BUS) et le câble
+USB-C (mode périphérique) prennent effet :
   sudo reboot
 La boîte redémarre ensuite automatiquement dessus, comme d'habitude.
 EOF

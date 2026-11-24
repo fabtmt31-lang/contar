@@ -102,18 +102,32 @@ CREATE TABLE IF NOT EXISTS playlist_items (
 );
 
 -- Association entre un tag NFC/RFID (son UID, tel que lu par
--- app/nfc_controller.py) et un contenu de la bibliothèque : un livre
--- entier, ou un album entier (voir PlayerController.play_album()). Un
--- même tag ne pointe jamais que vers UN seul contenu à la fois (poser un
--- tag déjà associé sur un autre livre/album remplace l'association
--- précédente, voir app/tags.py::TagManager.associate()). "kind" suit la
--- même convention que partout ailleurs dans le projet, mais porte ici
--- sur 'book' ou 'album' (jamais 'track' : un tag lance toujours soit un
--- livre isolé, soit un album complet, jamais un seul morceau).
+-- app/nfc_controller.py) et un contenu de la bibliothèque (v0.11) : une
+-- histoire ('book'), un album entier ('album') ou une liste de lecture
+-- ('playlist', histoires et musiques mélangées). Un tag ne pointe que vers
+-- un seul contenu à la fois. Chaque tag porte aussi sa façon de jouer :
+--   resume   1 = reprendre où on en était, 0 = toujours depuis le début
+--   shuffle  1 = ordre mélangé
+--   loop     1 = recommencer à la fin, 0 = s'arrêter
 CREATE TABLE IF NOT EXISTS tag_associations (
     uid_tag     TEXT PRIMARY KEY,
-    kind        TEXT NOT NULL CHECK (kind IN ('book', 'album')),
-    item_id     INTEGER NOT NULL
+    kind        TEXT NOT NULL CHECK (kind IN ('book', 'album', 'playlist')),
+    item_id     INTEGER NOT NULL,
+    resume      INTEGER NOT NULL DEFAULT 1,
+    shuffle     INTEGER NOT NULL DEFAULT 0,
+    loop        INTEGER NOT NULL DEFAULT 0
+);
+
+-- Avancement propre à chaque tag (v0.11) : la file de lecture telle que le
+-- tag l'a lancée (ordre mélangé compris, en JSON : [["book", 3], ...]), la
+-- place dans cette file et la position dans l'élément en cours. Retirer le
+-- tag l'enregistre ; la double pose l'efface. Voir app/tag_playback.py.
+CREATE TABLE IF NOT EXISTS tag_progress (
+    uid_tag      TEXT PRIMARY KEY,
+    queue        TEXT NOT NULL,
+    queue_index  INTEGER NOT NULL DEFAULT 0,
+    position_ms  INTEGER NOT NULL DEFAULT 0,
+    updated_at   TEXT NOT NULL DEFAULT ''
 );
 
 -- Nom donné à un tag (v0.10) : « Loup bleu », « Carte rouge »… pour le
@@ -125,11 +139,9 @@ CREATE TABLE IF NOT EXISTS tags (
     name        TEXT NOT NULL
 );
 
--- Journal des imports par clé USB (v0.9, voir app/usb_import.py) : une
--- ligne par import, par annulation ou par refus. Sert à l'historique de
--- l'écran Import. "mode" vaut 'ajouter', 'remplacer' ou 'annulation' ;
--- "source" vaut 'tag' (tag maître posé sur la boîte) ou 'web' (bouton de
--- l'administration) ; "status" vaut 'ok' ou le code du refus.
+-- Journal des imports. Jusqu'à la v0.10 : imports par clé USB. Depuis la
+-- v0.11 : rangement du disque de dépôt USB-C (mode 'depot', source 'usb',
+-- voir app/depot_import.py). "status" vaut 'ok' ou le code du refus.
 CREATE TABLE IF NOT EXISTS imports (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at  TEXT NOT NULL,
@@ -163,5 +175,34 @@ def init_database() -> None:
     # Dossiers supplémentaires (retirés en v0.10) : la boîte ne lit plus que
     # sa propre bibliothèque, Bibliotheque/Livres et Bibliotheque/Musiques.
     conn.execute("DELETE FROM settings WHERE key IN ('extra_book_folders', 'extra_music_folders')")
+    _migrate_tag_associations(conn)
+    # Réglages devenus sans objet en v0.11 (écran LCD, tags maîtres).
+    conn.execute(
+        "DELETE FROM settings WHERE key IN "
+        "('lcd_backlight_timeout_seconds', 'master_tag_ajouter', 'master_tag_remplacer')"
+    )
     conn.commit()
     conn.close()
+
+
+def _migrate_tag_associations(conn: sqlite3.Connection) -> None:
+    """Base d'avant la v0.11 : la table n'acceptait que 'book' et 'album' et
+    n'avait pas les options de lecture. SQLite ne sait pas modifier une
+    contrainte : on recrée la table et on recopie les associations."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(tag_associations)")}
+    if "resume" in columns:
+        return
+    conn.executescript("""
+        ALTER TABLE tag_associations RENAME TO tag_associations_v010;
+        CREATE TABLE tag_associations (
+            uid_tag     TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL CHECK (kind IN ('book', 'album', 'playlist')),
+            item_id     INTEGER NOT NULL,
+            resume      INTEGER NOT NULL DEFAULT 1,
+            shuffle     INTEGER NOT NULL DEFAULT 0,
+            loop        INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO tag_associations (uid_tag, kind, item_id)
+            SELECT uid_tag, kind, item_id FROM tag_associations_v010;
+        DROP TABLE tag_associations_v010;
+    """)

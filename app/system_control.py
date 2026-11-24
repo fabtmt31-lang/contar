@@ -20,11 +20,6 @@ def shutdown_now() -> tuple[bool, str]:
     if platform.system() != "Linux":
         return False, "L'extinction n'est disponible que sur le vrai Raspberry Pi, pas pendant les tests sur PC."
     try:
-        from app import lcd_display
-        lcd_display.show_shutdown_message()
-    except Exception:
-        pass  # l'écran ne doit jamais empêcher une extinction demandée
-    try:
         subprocess.Popen(["sudo", "shutdown", "-h", "now"])
         return True, "Extinction en cours..."
     except Exception as exc:

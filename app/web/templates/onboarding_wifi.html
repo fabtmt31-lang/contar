@@ -5,7 +5,7 @@
   <div class="auth-card">
     <div class="auth-icon">{{ icon('wifi', 32) }}</div>
     <h1>{{ _('Connexion au Wifi') }}</h1>
-    <p class="section-label">{{ _('Étape {n} sur {total}', n=2, total=4) }}</p>
+    <p class="section-label">{{ _('Étape {n} sur {total}', n=2, total=3) }}</p>
     <p class="subtitle">{{ _('Facultatif, vous pourrez le faire plus tard') }}</p>
     {% if trial and trial.state == 'echec' %}
       <p class="notice" role="alert" style="text-align: left;">{{ icon('warning') }}<span>

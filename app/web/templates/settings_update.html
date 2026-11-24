@@ -1,0 +1,77 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Mise à jour') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>{{ _('Mise à jour') }}</h1>
+    <p class="lead">{{ _("La boîte vérifie sur GitHub s'il existe une version plus récente de Contar, et l'installe. Histoires, musiques, tags et réglages sont conservés. Il faut que la boîte soit reliée au Wi-Fi de la maison.") }}</p>
+  </div>
+</div>
+
+<section class="card">
+  <div class="field-row">
+    <span>{{ _('Version installée') }}</span>
+    <strong>{{ APP_VERSION }}</strong>
+  </div>
+  {% if latest %}
+    {% if latest.ok %}
+      <div class="field-row">
+        <span>{{ _('Dernière version publiée') }}</span>
+        <strong>{{ latest.version or '?' }}</strong>
+      </div>
+      {% if latest.newer %}
+        <p class="notice notice-ok">{{ icon('check') }}<span>{{ _('Une nouvelle version est disponible.') }}</span></p>
+        {% if latest.notes %}<div class="log-box">{{ latest.notes }}</div>{% endif %}
+        <form method="post">
+          <input type="hidden" name="action" value="install">
+          <button type="submit" class="btn btn-primary btn-block"
+                  onclick='return confirm({{ _("Installer la mise à jour ? La lecture sera interrompue quelques minutes.")|tojson }})'>{{ icon('import', 18) }}<span>{{ _('Installer la version {v}', v=latest.version) }}</span></button>
+        </form>
+      {% else %}
+        <p class="hint">{{ _('La boîte est à jour.') }}</p>
+      {% endif %}
+    {% else %}
+      <p class="notice">{{ icon('warning') }}<span>{{ _(latest.error) }}</span></p>
+    {% endif %}
+  {% endif %}
+  {% if state.step in ('download', 'install', 'error') %}
+    <p class="notice">{{ icon('warning' if state.step == 'error' else 'refresh') }}<span>{{ _(state.message) }}</span></p>
+  {% endif %}
+  <form method="post">
+    <input type="hidden" name="action" value="check">
+    <button type="submit" class="btn btn-outline btn-block">{{ icon('refresh', 18) }}<span>{{ _('Vérifier les mises à jour') }}</span></button>
+  </form>
+</section>
+
+<details class="card">
+  <summary><strong>{{ _('Source des mises à jour') }}</strong></summary>
+  <form method="post" class="form">
+    <input type="hidden" name="action" value="source">
+    <div class="field">
+      <label for="repo">{{ _('Dépôt GitHub (propriétaire/dépôt)') }}</label>
+      <input type="text" id="repo" name="repo" value="{{ repo }}" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="token">{{ _("Jeton d'accès (dépôt privé seulement)") }}</label>
+      <input type="password" id="token" name="token" autocomplete="off" placeholder="{{ _('Jeton enregistré : laisser vide pour le garder') if has_token else 'github_pat_…' }}">
+      <p class="hint">{{ _("Sur GitHub : Settings → Developer settings → Fine-grained tokens, accès à ce seul dépôt, droit « Contents : Read-only ». Le jeton reste sur la boîte.") }}</p>
+    </div>
+    {% if has_token %}
+      <div class="field-row">
+        <label for="forget_token">{{ _('Oublier le jeton enregistré') }}</label>
+        <input type="checkbox" id="forget_token" name="forget_token">
+      </div>
+    {% endif %}
+    <div class="btn-row"><button type="submit" class="btn btn-outline">{{ _('Enregistrer') }}</button></div>
+  </form>
+</details>
+
+{% if log %}
+  <details class="card">
+    <summary><strong>{{ _('Journal de la dernière mise à jour') }}</strong></summary>
+    <div class="log-box">{{ log }}</div>
+  </details>
+{% endif %}
+{% endblock %}

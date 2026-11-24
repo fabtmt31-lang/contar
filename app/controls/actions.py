@@ -11,8 +11,7 @@ deux boutons maintenus ensemble, détectée par ce même module.
 """
 
 from app.player import player_controller
-from app.system_control import shutdown_now
-from app import lcd_display
+from app import power_manager
 
 ACTIONS = {
     "play_pause": lambda: player_controller.toggle_play_pause(),
@@ -23,15 +22,12 @@ ACTIONS = {
     "volume_up": lambda: _adjust_volume(player_controller.volume_up),
     "volume_down": lambda: _adjust_volume(player_controller.volume_down),
     "resume": lambda: _resume_last_played(),
-    "shutdown": lambda: shutdown_now(),
+    "shutdown": lambda: power_manager.shutdown("boutons"),
 }
 
 
 def _adjust_volume(adjust_fn) -> None:
-    """Ajuste le volume puis affiche brièvement le nouveau niveau sur
-    l'écran (voir app/lcd_display.py::show_volume())."""
     adjust_fn()
-    lcd_display.show_volume(player_controller.get_state()["volume"])
 
 
 def _resume_last_played() -> None:
@@ -50,7 +46,7 @@ def _resume_last_played() -> None:
 
 
 def trigger(action: str) -> None:
-    lcd_display.mark_activity()
+    power_manager.note_activity()
     handler = ACTIONS.get(action)
     if handler is None:
         raise ValueError(f"Action de contrôle inconnue : {action!r}")

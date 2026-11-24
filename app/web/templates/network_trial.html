@@ -15,7 +15,7 @@
 
     <p class="hint" style="text-align: left;">
       <strong>{{ _('Si le Wifi est accepté') }}</strong> : {{ _("la boîte y reste. Reliez cet appareil au même Wifi, puis ouvrez") }}
-      <code>http://{{ hostname }}.local</code>. {{ _("L'adresse s'affiche aussi sur l'écran de la boîte.") }}
+      <code>http://{{ hostname }}.local</code>.
     </p>
     <p class="hint" style="text-align: left;">
       <strong>{{ _("S'il est refusé") }}</strong> : {% if on_fallback %}{{ _("le réseau de secours revient. Reconnectez-vous-y : cette page vous dira ce qui n'a pas marché.") }}{% else %}{{ _("la boîte revient à son Wifi précédent : cette page vous dira ce qui n'a pas marché.") }}{% endif %}

@@ -13,8 +13,8 @@
 #   set-power-mode.sh cpu  eco|performance
 set -euo pipefail
 
-MODE="${1:?Usage: set-power-mode.sh <hdmi|cpu> <valeur>}"
-VALUE="${2:?Usage: set-power-mode.sh <hdmi|cpu> <valeur>}"
+MODE="${1:?Usage: set-power-mode.sh <hdmi|cpu|wifi> <valeur>}"
+VALUE="${2:?Usage: set-power-mode.sh <hdmi|cpu|wifi> <valeur>}"
 
 case "$MODE" in
     hdmi)
@@ -61,8 +61,19 @@ case "$MODE" in
         done
         echo "Gouverneur CPU réglé sur : $GOVERNOR"
         ;;
+    wifi)
+        # Wi-Fi activé ou coupé (Réglages → Réseau, v0.11).
+        case "$VALUE" in
+            on)  nmcli radio wifi on;  echo "Wi-Fi activé." ;;
+            off) nmcli radio wifi off; echo "Wi-Fi coupé." ;;
+            *)
+                echo "Valeur Wi-Fi invalide : $VALUE (attendu : on|off)" >&2
+                exit 1
+                ;;
+        esac
+        ;;
     *)
-        echo "Mode invalide : $MODE (attendu : hdmi|cpu)" >&2
+        echo "Mode invalide : $MODE (attendu : hdmi|cpu|wifi)" >&2
         exit 1
         ;;
 esac

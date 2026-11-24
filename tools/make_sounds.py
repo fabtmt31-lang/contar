@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Fabrique les deux sons de l'import par clé USB (v0.9) : un bip court et un
-carillon de fin. Sons de synthèse (sinusoïdes), comme ceux du démarrage et
+Fabrique les petits sons de la boîte : bip court, carillon « c'est rangé »,
+et depuis la v0.11 « rembobinage » (double pose d'un tag), « branché »
+(câble USB-C relié à un ordinateur) et « bonne nuit » (extinction). Sons de synthèse (sinusoïdes), comme ceux du démarrage et
 du tag inconnu : rien à télécharger.
 
 À relancer seulement pour changer ces sons :  python3 tools/make_sounds.py
@@ -68,3 +69,23 @@ if __name__ == "__main__":
     for index, freq in enumerate((783.99, 987.77, 1174.66, 1567.98)):  # sol, si, ré, sol
         chime = mix(chime, bell(freq, 0.55, 0.42), 0.02 + index * 0.13)
     save("done.wav", chime + silence(0.05))
+
+    # Rembobinage : une glissade rapide vers le grave, puis un point.
+    sweep = []
+    count = int(RATE * 0.32)
+    phase = 0.0
+    for i in range(count):
+        freq = 1400.0 - 1000.0 * i / count
+        phase += 2 * math.pi * freq / RATE
+        envelope = min(1.0, i / (RATE * 0.01), (count - i) / (RATE * 0.02))
+        sweep.append(0.38 * envelope * math.sin(phase))
+    save("rewind.wav", silence(0.02) + sweep + silence(0.06) + tone(660.0, 0.09, 0.45) + silence(0.04))
+
+    # Branché : deux notes montantes.
+    save("plug.wav", silence(0.02) + tone(659.25, 0.1, 0.45) + silence(0.03) + tone(987.77, 0.14, 0.45) + silence(0.04))
+
+    # Bonne nuit : carillon descendant, lent.
+    night = []
+    for index, freq in enumerate((1174.66, 987.77, 783.99, 587.33)):  # ré, si, sol, ré
+        night = mix(night, bell(freq, 0.9, 0.38), 0.02 + index * 0.22)
+    save("goodnight.wav", night + silence(0.05))

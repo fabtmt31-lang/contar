@@ -18,6 +18,7 @@ C'est ce fichier qu'installe install_pi.sh par défaut (mode "gamepad").
 """
 
 from app.web import create_app
+from run_common import start_box_services
 
 app = create_app()
 
@@ -28,36 +29,7 @@ except Exception as exc:
     print(f"[i] Contrôle manette non démarré ({exc}).")
     print("    Installez la dépendance avec : pip install inputs")
 
-# Import par clé USB (v0.9) : d'abord remettre la bibliothèque d'aplomb si
-# la boîte a été coupée pendant un import, puis surveiller le port USB.
-try:
-    from app import usb_import
-    usb_import.recover_interrupted()
-    usb_import.start_watcher()
-except Exception as exc:
-    print(f"[i] Import par clé USB non démarré ({exc}).")
-
-try:
-    from app import nfc_controller
-    from app.tag_reader import PN532Reader
-    nfc_controller.start(PN532Reader())
-except Exception as exc:
-    print(f"[i] Contrôle NFC non démarré ({exc}).")
-    print("    Vérifiez le câblage I2C du PN532 (i2cdetect -y 1) et que l'I2C est activé.")
-
-try:
-    from app import lcd_display
-    lcd_display.start()
-    lcd_display.show_welcome()
-except Exception as exc:
-    print(f"[i] Écran LCD non démarré ({exc}).")
-    print("    Vérifiez le câblage I2C de l'écran (i2cdetect -y 1) et que l'I2C est activé.")
-
-try:
-    from app.sound_feedback import play_startup
-    play_startup()
-except Exception as exc:
-    print(f"[i] Son de démarrage non joué ({exc}).")
+start_box_services(on_box=True)
 
 if __name__ == "__main__":
     from app.config import web_port

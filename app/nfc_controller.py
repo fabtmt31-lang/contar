@@ -1,58 +1,52 @@
 """
-Contrôle par tags NFC/RFID : poser un tag associé (voir app/tags.py) sur
-le lecteur lance directement le livre ou l'album correspondant, sans
-passer par l'interface web.
+Contrôle par tags NFC/RFID (v0.11) : le tag est la télécommande.
 
-Ne connaît RIEN d'un lecteur matériel en particulier (voir
-app/tag_reader.py pour ça) — start(reader) reçoit une instance de
-TagReader déjà choisie par le point d'entrée (run.py utilise
-PCSCReader pour tester sur PC, run_pi.py/run_pi_gamepad.py utilisent
-PN532Reader, le lecteur définitif de la boîte). Ce découpage permet de
-garder les deux lecteurs disponibles en parallèle sans dupliquer la
-logique de capture/association/déclenchement ci-dessous.
+    poser le tag        -> son contenu joue (reprise où ce tag en était)
+    le retirer          -> pause en douceur, avancement enregistré
+    le reposer vite     -> remise à zéro, depuis le début (son « rembobinage »)
 
-On ne réagit qu'à l'ARRIVÉE d'un tag, jamais à sa présence continue — un
-tag oublié sur le lecteur ne doit pas relancer la même histoire en
-boucle (voir app/tag_reader.py pour comment chaque lecteur applique
-cette règle). Le retrait du tag, lui, n'a AUCUN effet sur la lecture
-(choix de conception assumé, voir discussion du projet) : une fois
-lancée, la lecture continue normalement, pilotée par les
-boutons/manette comme n'importe quelle autre lecture — retirer le tag
-ne met pas en pause.
+Le geste est décidé par app/tag_gesture.py, le contenu et l'avancement
+par app/tag_playback.py, le matériel par app/tag_reader.py : ce module ne
+fait que relier les trois, avec les cas particuliers de la boîte :
 
-Ce module gère aussi la "capture" utilisée par l'interface web
-(Réglages → Tags NFC, "Associer un nouveau tag") : le même principe que
-app/controls/mapping.py pour la capture d'un bouton, mais appliqué à un
-UID de tag plutôt qu'à un control_id.
+- capture : l'administration attend un tag à associer (Tags → Associer) ;
+  le tag posé est alors capturé et ne lance rien ;
+- mode transfert : la boîte est branchée sur un ordinateur (USB-C, voir
+  app/usb_gadget.py) ; les tags ne lancent rien, sauf la capture ;
+- tag inconnu, contenu supprimé, hors des horaires autorisés : double bip.
+
+La présence d'un tag est transmise à app/power_manager.py, qui ne met
+jamais la boîte en veille tant qu'un tag est posé.
 """
 
 import threading
 import time
 from typing import Optional
 
-from app.player import player_controller
-from app import lcd_display
 from app import sound_feedback
-from app import usb_import
+from app import tag_playback
 from app.settings import SettingsManager
-from app.tag_reader import TagReader
+from app.tag_gesture import PAUSE, RESTART, TagGesture
+from app.tag_reader import ManualReader, TagReader
 from app.tags import TagManager
 
-_settings_manager = SettingsManager()
-
 # Durée max pendant laquelle une capture ("posez le tag à associer") reste
-# armée sans qu'aucun tag ne soit posé, avant d'abandonner toute seule —
-# même principe que CAPTURE_TIMEOUT_SECONDS dans app/controls/mapping.py,
-# juste un peu plus long ici (poser un tag prend un peu plus de temps que
-# d'appuyer sur un bouton).
+# armée sans qu'aucun tag ne soit posé, avant d'abandonner toute seule.
 CAPTURE_TIMEOUT_SECONDS = 60.0
 
-_tag_manager = TagManager()
+_settings = SettingsManager()
+_tags = TagManager()
+_gesture = TagGesture(
+    window_seconds=_settings.get_tag_double_window,
+    double_enabled=_settings.get_tag_double_enabled,
+)
 
 _lock = threading.Lock()
 _capturing = False
 _capture_deadline = 0.0
 _captured_uid: Optional[str] = None
+_reader: Optional[TagReader] = None
+_last_uid: Optional[str] = None       # dernier tag posé, pour l'administration
 
 
 def begin_capture() -> None:
@@ -85,75 +79,94 @@ def take_captured() -> Optional[str]:
         return uid
 
 
-def _on_tag_seen(uid: str) -> None:
-    global _capturing, _captured_uid
-    lcd_display.mark_activity()
+def present_uid() -> Optional[str]:
+    """Tag actuellement posé sur la boîte (None si aucun)."""
+    return _gesture.present_uid
+
+
+def _power(present: bool) -> None:
+    try:
+        from app import power_manager
+        power_manager.set_tag_present(present)
+    except Exception as exc:
+        print(f"[NFC] {exc}")
+
+
+def _in_transfer_mode() -> bool:
+    try:
+        from app import usb_gadget
+        return usb_gadget.is_transfer_mode()
+    except Exception:
+        return False
+
+
+def _on_present(uid: str) -> None:
+    global _capturing, _captured_uid, _last_uid
+    _power(True)
+    _last_uid = uid
     with _lock:
         if _capturing and time.monotonic() <= _capture_deadline:
             _captured_uid = uid
             _capturing = False
+            _gesture.on_present(uid)
+            _gesture.forget()
+            sound_feedback.play_beep()
             return
         _capturing = False
 
-    # Tags maîtres de l'import par clé USB (v0.9) : ils ne lancent jamais
-    # d'histoire, et fonctionnent à toute heure (les horaires autorisés ne
-    # concernent que la lecture). Voir app/usb_import.py.
-    role = _settings_manager.master_tag_role(uid)
-    if role is not None:
-        print(f"[NFC] tag maître « {role} » posé.")
-        usb_import.on_master_tag(role)
+    action = _gesture.on_present(uid)
+
+    if _in_transfer_mode():
+        print(f"[NFC] tag {uid} posé pendant un transfert USB : ignoré.")
+        sound_feedback.play_error()
         return
 
-    if usb_import.is_busy():
-        # Pendant un import, les tags d'histoire sont ignorés.
-        lcd_display.show_message("lcd.import_busy_line1", "lcd.import_busy_line2")
-        return
-    # Un autre tag posé entre les deux poses de « Remplacer » annule la demande.
-    usb_import.cancel_confirmation()
-
-    association = _tag_manager.get(uid)
+    association = _tags.get(uid)
     if association is None:
-        print(f"[NFC] tag inconnu (UID {uid}) — associez-le depuis Réglages → Tags NFC.")
+        print(f"[NFC] tag inconnu (UID {uid}) — associez-le depuis l'administration, page Tags.")
         sound_feedback.play_unknown_tag()
-        lcd_display.show_unknown_tag()
         return
 
-    if not _settings_manager.is_allowed_now():
-        # Réglages → Horaires (app/settings.py::is_allowed_now(), en place
-        # depuis longtemps mais jamais exploité nulle part avant ce jour)
-        # — ne bloque QUE le lancement d'une nouvelle histoire par tag ;
-        # une lecture déjà en cours n'est jamais coupée par ce mécanisme.
-        print(f"[NFC] tag reconnu (UID {uid}) mais hors plage horaire autorisée — lecture bloquée.")
-        lcd_display.show_quiet_hours()
+    if not _settings.is_allowed_now():
+        # Réglages → Horaires : ne bloque QUE le lancement par tag ; une
+        # lecture déjà en cours n'est jamais coupée par ce mécanisme.
+        print(f"[NFC] tag {uid} reconnu mais hors plage horaire autorisée — lecture bloquée.")
+        sound_feedback.play_error()
         return
 
-    if association["kind"] == "book":
-        started = player_controller.play("book", association["item_id"])
-    else:
-        started = player_controller.play_album(association["item_id"])
+    from_start = action == RESTART
+    if from_start:
+        print(f"[NFC] tag {uid} reposé aussitôt : on reprend depuis le début.")
+        sound_feedback.play_rewind()
+        time.sleep(0.6)   # laisse entendre le son avant l'histoire
 
-    if not started:
-        # Le livre/album associé à ce tag a été supprimé depuis (voir
-        # app/library_delete.py) — sans cette vérification, l'écran
-        # affichait "Tag reconnu" avec le titre de la lecture PRÉCÉDENTE
-        # (celui encore en mémoire dans player.py), ce qui est faux et
-        # trompeur pour l'enfant.
-        print(f"[NFC] tag reconnu (UID {uid}) mais son contenu associé n'existe plus (supprimé ?).")
+    if not tag_playback.start(uid, association, from_start=from_start):
+        # Contenu supprimé depuis, ou liste vide.
+        print(f"[NFC] tag {uid} reconnu mais son contenu n'existe plus (supprimé ? liste vide ?).")
         sound_feedback.play_unknown_tag()
-        lcd_display.show_unknown_tag()
-        return
 
-    # Titre déjà résolu par player.py (voir get_state()) — pas de requête
-    # supplémentaire nécessaire ici pour l'affichage écran.
-    title = player_controller.get_state().get("title") or ""
-    lcd_display.show_tag_scanned(title)
+
+def _on_absent(uid: str) -> None:
+    action = _gesture.on_absent(uid)
+    _power(False)
+    if action == PAUSE:
+        tag_playback.pause(uid)
 
 
 def start(reader: TagReader) -> None:
-    """
-    Démarre l'écoute du lecteur — voir app/tag_reader.py pour les
-    implémentations disponibles (PCSCReader, PN532Reader) et
-    app/run_pi.py/run.py/etc. pour lequel est injecté selon la cible.
-    """
-    reader.start(on_tag_seen=_on_tag_seen)
-    print("Contrôle NFC actif : posez un tag associé pour lancer une histoire (Réglages → Tags NFC).")
+    """Démarre l'écoute du lecteur (voir app/tag_reader.py::make_reader())."""
+    global _reader
+    _reader = reader
+    reader.start(on_present=_on_present, on_absent=_on_absent)
+    print("Contrôle NFC actif : posez un tag pour écouter, retirez-le pour mettre en pause.")
+
+
+def simulated_reader() -> Optional[ManualReader]:
+    """Le lecteur simulé, s'il est en service (CONTAR_NFC=simu)."""
+    return _reader if isinstance(_reader, ManualReader) else None
+
+
+def set_slow_polling(slow: bool) -> None:
+    """Veille légère : le lecteur interroge moins souvent (moins de courant)."""
+    if _reader is not None and hasattr(_reader, "poll_interval"):
+        _reader.poll_interval = 0.3 if slow else 0.05

@@ -128,7 +128,7 @@ Le script (quelques minutes) :
    plantage)
 
 À la fin, le script affiche l'adresse à ouvrir depuis un téléphone/tablette
-(`http://contar.local`, ou `http://<IP-du-Pi>` ; l'adresse s'affiche aussi sur l'écran de la boîte au démarrage).
+(`http://contar.local`, ou `http://<IP-du-Pi>`, ou `http://10.55.0.1` en reliant la boîte à un ordinateur par son câble USB-C).
 
 ### Calibrer la manette (mode gamepad)
 
@@ -207,17 +207,22 @@ Câblage, boîte éteinte :
 Avec SD au 3,3 V, l'ampli ne joue que le canal gauche : la boîte lui
 envoie donc les deux canaux réunis, rien ne se perd.
 
-Le reste du câblage de la boîte (schéma complet dans le cahier des
-charges, « Câblage ») :
+Le reste du câblage de la boîte (v0.11 : plus d'écran LCD, lecteur NFC en
+SPI, deux voyants et un bouton de réveil) :
 
 | Module | Fil | Broche du Pi |
 |---|---|---|
-| Écran LCD | VCC | 2 (5 V) |
-| | GND | 6 |
-| | SDA, SCL | 3, 5 |
-| Lecteur NFC PN532 | VCC | 1 (3,3 V) |
+| Lecteur NFC PN532 (interrupteurs sur **SPI**) | VCC | 1 (3,3 V) |
 | | GND | 20 |
-| | SDA, SCL | 3, 5 (partagées avec l'écran) |
+| | SCK | 23 (GPIO 11) |
+| | MISO | 21 (GPIO 9) |
+| | MOSI | 19 (GPIO 10) |
+| | SS / NSS | 22 (GPIO 25) |
+| Voyant vert (+ résistance 220–330 Ω) | patte longue | 16 (GPIO 23) |
+| Voyant rouge (+ résistance 220–330 Ω) | patte longue | 18 (GPIO 24) |
+| | pattes courtes (masse) | 34 |
+| Bouton de réveil / extinction | un fil | 5 (GPIO 3) |
+| | l'autre fil | 6 (masse) |
 | Boutons | retour, lecture/pause, avance | 11, 13, 15 (GPIO 17, 27, 22) |
 | | volume −, volume + | 29, 31 (GPIO 5, 6) |
 | | masse commune | 25 |
@@ -225,6 +230,12 @@ charges, « Câblage ») :
 Le rôle de chaque bouton se règle dans Réglages → Boutons (« Ajouter un
 bouton », puis un appui sur le bouton voulu). La GPIO 19 (broche 35) est
 réservée à l'ampli : aucun bouton ne doit s'y trouver.
+
+Le PN532 était branché en I2C (broches 3 et 5) jusqu'à la v0.10. La
+broche 5 (GPIO 3) est la seule qui sait rallumer un Raspberry Pi 4 éteint :
+le lecteur passe donc en SPI pour la libérer. Une boîte pas encore
+recâblée fonctionne toujours, sans bouton de réveil :
+`sudo NFC_BUS=i2c bash install_pi.sh . gpio`.
 
 Après l'installation de la v0.10.1 et un redémarrage (`sudo reboot`) :
 
@@ -247,42 +258,97 @@ jack USB branché garde la priorité : débranchez-le pour l'essai.
   faciles à croiser), l'alimentation en 5 V, et les deux fils du
   haut-parleur.
 
-## Essayer l'écran LCD seul
+## Le geste de l'enfant (v0.11)
+
+- **Poser un tag** : son contenu joue (une histoire, un album, une liste),
+  en reprenant où ce tag s'était arrêté.
+- **Le retirer** : pause en douceur, avancement enregistré.
+- **Le reposer dans les 3 secondes** : remise à zéro, un son « rembobinage »
+  le confirme, puis l'histoire repart du début.
+
+Le délai et la façon de jouer de chaque tag se règlent dans **Tags**.
+
+## Remplir la boîte par le câble USB-C (v0.11)
+
+Le port USB-C du Pi 4, son port d'alimentation, sert aussi à le relier à
+un ordinateur. La boîte s'y présente comme :
+
+- une **carte réseau** : l'administration s'ouvre sur `http://10.55.0.1`
+  (ou `http://contar.local`). L'ordinateur garde son propre accès à
+  Internet : la boîte ne s'annonce ni comme passerelle ni comme serveur
+  de noms ;
+- un **disque « CONTAR »** : copier les fichiers dans `Histoires` (un fichier
+  = une histoire) ou dans `Musiques` (un dossier = un album), puis
+  **éjecter** le disque. La boîte range tout, joue un carillon et vide le
+  disque. Débranchée sans éjecter, elle range le disque au démarrage suivant.
+
+Pendant ce temps, la boîte est en **mode transfert** : la lecture est en
+pause, les tags ne lancent rien (sauf pour les associer), le voyant vert
+clignote vite.
+
+Il faut un câble USB-C **de données** (pas un simple câble de charge) et
+un redémarrage après la première installation de la v0.11 (mode
+périphérique du port USB-C, `dtoverlay=dwc2,dr_mode=peripheral`).
+
+### L'alimentation
+
+Branchée sur un ordinateur, c'est l'ordinateur qui alimente la boîte. Un
+Pi 4 demande jusqu'à 3 A ; en mode transfert (pas de son), il lui en faut
+plutôt 0,6 à 1 A :
+
+| Port de l'ordinateur | Courant | Résultat attendu |
+|---|---|---|
+| USB-C d'un portable récent | 1,5 à 3 A | fonctionne |
+| USB 3 (prise bleue) + câble USB-A → USB-C | 0,9 A | fonctionne en général, à la limite |
+| USB 2 (prise noire) | 0,5 A | trop faible : redémarrages, disque qui disparaît |
+
+La boîte mesure elle-même la sous-tension (`vcgencmd get_throttled`) et
+l'affiche dans **Import**. Pour vérifier à la main :
 
 ```bash
-sudo systemctl stop contar
-sudo -u contar /opt/contar/venv/bin/python /opt/contar/tools/test_ecran.py
-sudo systemctl start contar
+vcgencmd get_throttled     # throttled=0x0 : tout va bien ; 0x50005 : sous-tension
 ```
 
-Trois écrans s'affichent à la suite ; le terminal dit ce qu'on doit lire.
+**Plus tard, alimentation par les broches.** On peut alimenter le Pi par
+ses broches 5 V (broches 2 ou 4, masse broche 6 ou 9) avec une alimentation
+5,1 V / 3 A stable, et ne garder le port USB-C que pour les données. Dans
+ce cas, il ne faut **jamais** que les deux sources se rejoignent : le 5 V
+de l'ordinateur arriverait sur celui de l'alimentation. Il faut alors un
+câble ou un adaptateur USB-C qui coupe le fil d'alimentation (VBUS) et ne
+laisse passer que les données, ou une carte d'alimentation qui gère les
+deux sources (diode « idéale »). Les broches 5 V ne sont pas protégées par
+le fusible de la carte : une alimentation de qualité est indispensable.
 
-## Importer des histoires avec une clé USB (v0.9)
+## Veille, extinction et réveil (v0.11)
 
-1. Sur la clé (FAT32 ou exFAT), créez un dossier `Audiolibre` avec deux
-   dossiers : `Livres` (un fichier = une histoire) et `Musiques` (un
-   sous-dossier = un album). Formats : MP3, M4A, M4B.
-2. Branchez la clé sur un port USB de la boîte. Après quelques secondes :
-   un bip, et l'écran affiche **Clé prête / Posez un tag**.
-3. Posez le tag maître **Ajouter** (copie ce qui manque), ou le tag maître
-   **Remplacer** deux fois de suite (la boîte contiendra exactement ce
-   qu'il y a sur la clé). Sans tags maîtres : ouvrez **Import** dans
-   l'administration, les deux boutons y sont.
-4. L'écran suit la copie (**Import 7/23**), puis **Import fini** avec un
-   carillon, puis **Retirez la clé**.
+Le Raspberry Pi 4 n'a pas de veille profonde. Quand plus rien ne se passe
+(pas de tag posé, rien qui joue, pas d'ordinateur relié) :
 
-Les deux tags maîtres se déclarent une fois, dans **Tags → Tags maîtres**.
+1. **veille légère** après 1 minute : processeur au ralenti, voyant vert
+   qui s'allume brièvement toutes les 3 secondes. Poser un tag relance la
+   lecture tout de suite ;
+2. **extinction** après 15 minutes : son « bonne nuit », arrêt propre.
+   Pour rallumer : un appui sur le bouton de réveil (broche 5 contre la
+   masse, broche 6), ou débrancher puis rebrancher le câble.
 
-La clé n'est jamais modifiée. Ce que Remplacer retire reste en réserve
-sur la boîte jusqu'au prochain import réussi : **Import → Annuler le
-dernier remplacement** remet la boîte comme avant.
+Boîte allumée, un appui long (2 secondes) sur ce même bouton l'éteint. Les
+deux délais se règlent dans Réglages → Énergie (0 = jamais).
 
-Si l'écran reste sur l'attente habituelle après le branchement :
+Le réveil par la broche 5 dépend de deux réglages du chargeur de démarrage
+du Pi 4, déjà bons par défaut : `WAKE_ON_GPIO=1` et `POWER_OFF_ON_HALT=0`.
+Pour vérifier : `rpi-eeprom-config`. Éteinte de cette façon, la carte
+consomme encore un peu (de l'ordre de quelques centaines de milliwatts, à
+mesurer). Démarrer prend une vingtaine de secondes jusqu'au carillon.
 
-```bash
-lsblk -o NAME,TRAN,FSTYPE,LABEL,SIZE      # la clé doit apparaître, TRAN = usb
-sudo journalctl -u contar -n 40 | grep -i "clé\|import"
-```
+## Mettre à jour depuis GitHub (v0.11)
+
+Réglages → **Mise à jour** : « Vérifier », puis « Installer ». La boîte
+télécharge la dernière version publiée du dépôt (par défaut
+`fabtmt31-lang/contar` : sa dernière *release*, sinon le fichier `VERSION`
+de sa branche principale) et relance `install_pi.sh` dessus, en gardant le
+mode manette ou boutons. Il faut le Wi-Fi de la maison. Pour un dépôt
+privé, un jeton GitHub en lecture seule se saisit dans la même page.
+Journal : `/opt/contar/data/maj/derniere-maj.log`.
 
 ## Wifi de secours si la connexion à la maison échoue ("Wifi Direct")
 

@@ -1,8 +1,5 @@
-// Page Tags, et étape « Tags maîtres » de l'assistant de bienvenue.
-// Trois usages de la même capture (« posez un tag sur le lecteur ») :
-// - associer un tag à une histoire ou à un album ;
-// - déclarer un tag maître (import par clé USB) ;
-// et, sans capture, donner un nom à un tag déjà associé.
+// Page Tags : associer un tag (« posez un tag sur le lecteur ») et, sans
+// capture, donner un nom à un tag déjà associé.
 // Chaque bloc ne s'active que si ses éléments sont dans la page.
 (function () {
   const startBtn = document.getElementById("capture-start");
@@ -14,14 +11,6 @@
   const assignUidLabel = document.getElementById("assign-uid");
   const assignUidField = document.getElementById("assign-uid-field");
   const assignName = document.getElementById("assign-name");
-
-  // Tags maîtres : le tag posé est enregistré tout de suite comme tag
-  // « ajouter » ou « remplacer ».
-  const masterButtons = document.querySelectorAll(".master-capture");
-  const masterForm = document.getElementById("master-form");
-  const masterRole = document.getElementById("master-role");
-  const masterUid = document.getElementById("master-uid");
-  let pendingRole = null;
 
   const API = window.TAGS_API || {};
   const TEXT = window.TAGS_TEXT || {};
@@ -52,12 +41,6 @@
 
       if (data.uid) {
         hideBanner();
-        if (pendingRole && masterForm) {
-          masterRole.value = pendingRole;
-          masterUid.value = data.uid;
-          masterForm.submit();
-          return;
-        }
         if (assignSection) {
           assignUidLabel.textContent = data.uid;
           assignUidField.value = data.uid;
@@ -94,23 +77,14 @@
     pollTimer = setInterval(pollCaptureState, 500);
   }
 
-  masterButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      pendingRole = button.dataset.role;
-      startCapture(TEXT.waitingMaster);
-    });
-  });
-
   if (startBtn) {
     startBtn.addEventListener("click", () => {
-      pendingRole = null;
       startCapture(TEXT.waiting);
     });
   }
 
   if (cancelBtn) {
     cancelBtn.addEventListener("click", async () => {
-      pendingRole = null;
       await post(API.cancel);
       hideBanner();
     });

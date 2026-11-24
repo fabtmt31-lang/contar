@@ -87,3 +87,14 @@ def apply_saved_power_settings() -> None:
         settings_manager.get_power_hdmi_enabled(),
         settings_manager.get_power_eco_mode(),
     )
+
+
+def apply_wifi(enabled: bool) -> tuple[bool, str]:
+    """Wi-Fi activé ou coupé (Réglages → Réseau, v0.11)."""
+    return _run_script("wifi", "on" if enabled else "off")
+
+
+def apply_saved_wifi() -> None:
+    from app.settings import SettingsManager
+    if not SettingsManager().get_wifi_enabled():
+        apply_wifi(False)

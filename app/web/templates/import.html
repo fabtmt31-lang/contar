@@ -4,13 +4,53 @@
 <div class="page-head">
   <div class="page-head-text">
     <h1>{{ _('Import') }}</h1>
-    <p class="lead">{{ _("Par clé USB branchée sur la boîte, ou en envoyant des fichiers depuis cet appareil.") }}</p>
+    <p class="lead">{{ _("Par le câble USB-C branché sur un ordinateur, ou en envoyant des fichiers depuis cet appareil.") }}</p>
   </div>
 </div>
 
-<div id="usb-panel" class="stack-lg" data-url="{{ url_for('main.import_usb_panel') }}">
-  {% include "_import_usb.html" %}
-</div>
+<section class="card" id="usb-panel" data-url="{{ url_for('main.usb_state') }}" data-connected="{{ '1' if usb.connected else '0' }}">
+  <div class="card-head card-head-split">
+    <div class="card-head">{{ icon('usb', 22) }}<h2>{{ _('Câble USB-C') }}</h2></div>
+    <span class="usb-state">
+      {% if usb.busy %}
+        <span class="pill pill-warn">{{ _('Rangement en cours…') }}</span>
+      {% elif usb.connected %}
+        <span class="pill pill-ok">{{ _('Relié à un ordinateur') }}</span>
+      {% else %}
+        <span class="pill">{{ _('Non relié') }}</span>
+      {% endif %}
+    </span>
+  </div>
+  {% if usb.undervoltage %}
+    <p class="notice">{{ icon('warning') }}<span>{{ _("L'ordinateur ne fournit pas assez de courant à la boîte. Préférez un port USB-C de l'ordinateur, ou un port USB 3 (bleu), avec un câble court.") }}</span></p>
+  {% endif %}
+  <ol class="usb-steps">
+    <li>{{ _("Reliez la boîte à un ordinateur avec un câble USB-C (qui transporte les données, pas un simple câble de charge). Elle démarre, puis un disque « CONTAR » apparaît sur l'ordinateur.") }}</li>
+    <li>{{ _("Copiez vos fichiers (.mp3, .m4a, .m4b) dans « Histoires » (un fichier = une histoire) ou dans « Musiques » (un dossier = un album).") }}</li>
+    <li>{{ _("Éjectez le disque CONTAR. La boîte range les fichiers dans sa bibliothèque, joue un carillon, puis vide le disque.") }}</li>
+  </ol>
+  <p class="hint">{{ _("Tant que le câble est branché, cette administration est aussi ouverte sur l'ordinateur, à l'adresse {a}. Les tags ne lancent rien pendant ce temps, sauf pour les associer.", a='http://' ~ usb.address) }}</p>
+  {% if not usb.available %}
+    <p class="hint">{{ _("Port USB-C en mode périphérique non disponible sur cet appareil (normal sur un ordinateur de test).") }}</p>
+  {% endif %}
+  {% if usb.last_result %}
+    <p class="notice">{{ icon('check' if usb.last_result.status == 'ok' else 'warning') }}<span>{{ _(usb.messages.get(usb.last_result.status, usb.messages['copie'])) }}
+      {% if usb.last_result.status == 'ok' %} {{ _('{a} ajouté(s), {p} déjà sur la boîte.', a=usb.last_result.added, p=usb.last_result.present) }}{% endif %}</span></p>
+  {% endif %}
+  {% if usb.history %}
+    <details>
+      <summary>{{ _('Derniers rangements') }}</summary>
+      <ul class="list">
+        {% for entry in usb.history %}
+          <li class="row"><span class="row-main"><span class="row-text">
+            <span class="row-title">{{ entry.started_at|quand }}</span>
+            <span class="row-sub">{{ _(usb.messages.get(entry.status, entry.status)) }} · {{ _('{a} ajouté(s), {p} déjà sur la boîte.', a=entry.added, p=entry.present) }}</span>
+          </span></span></li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</section>
 
 <div class="section-label">{{ _('Depuis ce téléphone ou cet ordinateur') }}</div>
 

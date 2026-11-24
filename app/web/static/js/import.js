@@ -1,53 +1,32 @@
-// Écran Import : le cadre « Clé USB » est relu toutes les deux secondes pour
-// suivre la clé branchée et l'avancement d'un import (voir
-// templates/_import_usb.html et la route /import/cle).
+// Écran Import : l'état du câble USB-C est relu toutes les deux secondes ;
+// quand il change (ordinateur branché, rangement du dépôt terminé…), la
+// page se recharge pour afficher le nouvel état et le bilan.
 (function () {
   const panel = document.getElementById("usb-panel");
   if (!panel) {
     return;
   }
   const url = panel.dataset.url;
-  let lastHtml = null;
-  let busy = false;
-
-  function openFolds() {
-    return Array.from(panel.querySelectorAll("details[open][data-keep]")).map((d) => d.dataset.keep);
-  }
+  let last = null;
 
   async function refresh() {
-    if (busy || document.hidden) {
+    if (document.hidden) {
       return;
     }
-    busy = true;
     try {
       const res = await fetch(url, { headers: { "X-Requested-With": "fetch" } });
-      // Session expirée : la boîte renvoie vers la page de connexion. On
-      // recharge la page entière plutôt que d'afficher cette page dans le cadre.
-      if (res.redirected) {
+      if (res.redirected || !res.ok) {
+        return;
+      }
+      const data = await res.json();
+      const key = [data.connected, data.busy, data.undervoltage].join("|");
+      if (last !== null && key !== last) {
         window.location.reload();
         return;
       }
-      if (!res.ok) {
-        return;
-      }
-      const html = await res.text();
-      if (html !== lastHtml) {
-        if (lastHtml !== null) {
-          const keep = openFolds();
-          panel.innerHTML = html;
-          keep.forEach((name) => {
-            const fold = panel.querySelector('details[data-keep="' + name + '"]');
-            if (fold) {
-              fold.open = true;
-            }
-          });
-        }
-        lastHtml = html;
-      }
+      last = key;
     } catch (err) {
       // Réseau momentanément indisponible : nouvel essai au prochain tour.
-    } finally {
-      busy = false;
     }
   }
 

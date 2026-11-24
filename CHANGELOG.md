@@ -456,3 +456,71 @@ Les broches 13, 16 et 26 des versions précédentes restent écoutées.
 À compléter à chaque nouvelle archive (résumé bref des changements,
 pas un historique détaillé — le "pourquoi" de chaque décision reste dans
 les fichiers de code concernés, pas ici).
+
+## v0.11.0 — le tag devient la télécommande, le câble USB-C remplace la clé
+
+Refonte profonde du fonctionnement de la boîte. Une boîte déjà installée
+garde ses histoires, ses tags, ses listes et ses réglages.
+
+**Le geste de l'enfant**
+- **Poser un tag** joue son contenu, **le retirer** met en pause en douceur
+  (fondu court) et enregistre l'avancement, **le reposer dans les 3 s**
+  remet à zéro (son « rembobinage »). Délai réglable, et désactivable, dans
+  Tags (`app/tag_gesture.py`, `app/nfc_controller.py`).
+- Le lecteur signale désormais l'arrivée **et le retrait** d'un tag ; une
+  lecture ratée de temps en temps n'est pas prise pour un retrait (0,5 s
+  sans lecture avant de conclure, `app/tag_reader.py`).
+- **Avancement par tag** (table `tag_progress`) : deux tags peuvent lancer
+  la même histoire sans se gêner. Reprise avec 3 s de recul pour une
+  histoire. À la fin du contenu, l'avancement est effacé.
+- **Un tag joue une histoire, un album ou une liste de lecture**, avec sa
+  façon de jouer : reprendre ou toujours au début, ordre mélangé,
+  recommencer à la fin (`app/tag_playback.py`, page Tags).
+
+**Le câble USB-C**
+- Relié à un ordinateur, le port USB-C du Pi 4 se présente comme une carte
+  réseau (administration sur `http://10.55.0.1`) et un disque « CONTAR »
+  (dépôt) : copier, éjecter, la boîte range et joue un carillon
+  (`bin/usb-gadget.sh`, `app/usb_gadget.py`, `app/depot_import.py`).
+- Mode transfert pendant la connexion : lecture en pause, tags inactifs
+  (sauf pour les associer), voyant vert qui clignote.
+- Alimentation trop faible de l'ordinateur détectée et signalée (Import).
+
+**Énergie**
+- Veille légère après 1 min sans rien, extinction après 15 min, réglables
+  (Réglages → Énergie, `app/power_manager.py`). Jamais pendant un transfert.
+- Bouton de réveil sur la GPIO 3 (broche 5 contre la masse) : rallume la
+  boîte éteinte ; boîte allumée, un appui long l'éteint.
+- Démarrage plus rapide : le service n'attend plus le réseau, services
+  inutiles coupés, `boot_delay=0`, pas d'écran de démarrage.
+
+**Voyants** (`app/leds.py`) : vert = allumée (clignote vite : reliée à un
+ordinateur, lentement : en veille) ; rouge = lecture en cours. GPIO 23 et 24.
+
+**Wi-Fi activable au choix** (Réglages → Réseau). Coupé, la boîte se règle
+par le câble USB-C ; le réseau de secours ne s'ouvre plus.
+
+**Mise à jour depuis GitHub** (Réglages → Mise à jour, `app/updater.py`,
+`bin/update-contar.sh`) : vérifie la dernière version publiée du dépôt et
+relance `install_pi.sh` dessus. Dépôt privé : jeton en lecture seule.
+
+**Retiré**
+- Import par clé USB, tags maîtres « Ajouter »/« Remplacer » et leur étape
+  dans l'assistant de bienvenue (`app/usb_import.py`, `bin/usb-key.sh`).
+- Écran LCD (`app/lcd_display.py`, `tools/test_ecran.py`, RPLCD, smbus2).
+  Les dossiers de travail de l'ancien import sont nettoyés au démarrage ;
+  `Bibliotheque/.reserve` (ce qu'un ancien « Remplacer » avait retiré) est
+  laissé en place : `sudo rm -rf /opt/contar/Bibliotheque/.reserve` pour
+  récupérer la place.
+
+**Matériel** : le PN532 passe en **SPI** (SCK 23, MISO 21, MOSI 19, SS 22)
+pour libérer la GPIO 3. Une boîte pas encore recâblée :
+`sudo NFC_BUS=i2c bash install_pi.sh . gpio` (sans bouton de réveil).
+
+**Correctif** : un album ou une liste ne passait à l'élément suivant que si
+la vérification (une par seconde) tombait dans la dernière demi-seconde du
+morceau ; sinon la lecture s'arrêtait. La fin du fichier est désormais
+reconnue telle quelle.
+
+**Tests** : `python -m pytest tests/` (geste, parcours complet avec le vrai
+lecteur, pages de l'administration, rangement du dépôt).

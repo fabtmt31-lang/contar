@@ -286,6 +286,13 @@ while true; do
 
     read_conf
 
+    # Wi-Fi coupé par un parent (Réglages → Réseau, v0.11) : rien à faire,
+    # la boîte se règle alors par le câble USB-C.
+    if nmcli radio wifi 2>/dev/null | grep -qi '^disabled'; then
+        sleep "$CHECK_INTERVAL_SECONDS"
+        continue
+    fi
+
     if [ "$AP_ENABLED" != "1" ]; then
         # Fonction désactivée par un parent : on s'assure juste que le
         # point d'accès n'est pas resté actif d'une session précédente.

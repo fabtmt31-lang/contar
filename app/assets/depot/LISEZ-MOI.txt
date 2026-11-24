@@ -1,0 +1,16 @@
+CONTAR — disque de dépôt
+========================
+
+1. Copiez vos fichiers audio (.mp3, .m4a, .m4b) :
+   - dans « Histoires » : un fichier = une histoire ;
+   - dans « Musiques » : un dossier = un album (le nom du dossier
+     devient le nom de l'album).
+2. Éjectez le disque CONTAR (clic droit > Éjecter), puis débranchez
+   le câble, ou laissez-le branché.
+3. La boîte range tout dans sa bibliothèque, puis joue un petit
+   carillon. Le disque est ensuite vidé : vos fichiers sont sur la boîte.
+
+Pour associer les histoires à des tags, ouvrir les réglages, ou envoyer
+des fichiers sans passer par ce disque : ouvrez « Ouvrir Contar.html »
+(ou l'adresse http://10.55.0.1 dans votre navigateur) pendant que le
+câble est branché.

@@ -9,14 +9,19 @@
   <h2>{{ _('Ajouter des histoires ou de la musique') }}</h2>
   <p>{{ _("Ouvrez « Import » dans le menu, choisissez des fichiers .mp3, .m4a ou .m4b sur votre téléphone ou votre ordinateur, puis touchez « Envoyer ». Les histoires et les albums apparaissent ensuite dans la Bibliothèque.") }}</p>
 
-  <h2>{{ _('Importer avec une clé USB') }}</h2>
-  <p>{{ _("Sur la clé, créez un dossier « Audiolibre » contenant un dossier « Livres » (un fichier = une histoire) et un dossier « Musiques » (un sous-dossier = un album). Branchez la clé sur la boîte : l'écran affiche « Clé prête ». Posez alors le tag maître « Ajouter » pour copier ce qui manque, ou le tag maître « Remplacer » — deux fois de suite — pour que la boîte contienne exactement ce qu'il y a sur la clé. Les mêmes actions sont proposées par des boutons dans « Import ».") }}</p>
-  <p>{{ _("La boîte ne modifie jamais la clé. Ce que « Remplacer » retire reste en réserve jusqu'au prochain import : « Import » permet d'annuler le dernier remplacement. Les deux tags maîtres se déclarent dans « Tags ».") }}</p>
+  <h2>{{ _('Remplir la boîte avec le câble USB-C') }}</h2>
+  <p>{{ _("Reliez la boîte à un ordinateur avec un câble USB-C qui transporte les données. Un disque « CONTAR » apparaît : copiez vos fichiers dans « Histoires » (un fichier = une histoire) ou dans « Musiques » (un dossier = un album), puis éjectez le disque. La boîte range les fichiers, joue un carillon et vide le disque.") }}</p>
+  <p>{{ _("Pendant que le câble est branché, ouvrez http://10.55.0.1 sur l'ordinateur pour retrouver cette administration (le fichier « Ouvrir Contar » du disque y mène aussi). Les tags ne lancent rien pendant ce temps, sauf pour les associer.") }}</p>
 
   <h2>{{ _('Associer un tag') }}</h2>
   <p>{{ _("Dans la Bibliothèque, touchez la pastille « Sans tag » d'une histoire ou d'un album, puis posez le tag sur la boîte. Pour retirer un tag, touchez la pastille « Tag associé ». La page « Tags » montre tous les tags déjà associés.") }}</p>
 
   <p>{{ _("Dans « Tags », vous pouvez donner un nom à chaque tag (« Loup bleu ») pour le reconnaître. Dans la Bibliothèque, le filtre « Sans tag » regroupe les histoires et les albums qui n'en ont pas encore.") }}</p>
+
+  <h2>{{ _("Ce que fait l'enfant") }}</h2>
+  <p>{{ _("Il pose un tag : son contenu joue, tant que le tag reste posé. Il le retire : la lecture s'arrête en douceur et la boîte retient où il en était. Il le repose aussitôt (dans les 3 secondes) : l'histoire repart du début, un petit son le confirme.") }}</p>
+  <p>{{ _("Un tag peut jouer une histoire, un album entier ou une liste de lecture. Dans « Tags », choisissez pour chacun s'il reprend où il en était ou repart toujours du début, s'il mélange l'ordre et s'il recommence à la fin.") }}</p>
+  <p>{{ _("Voyant vert : la boîte est allumée (il clignote vite quand elle est reliée à un ordinateur, lentement en veille). Voyant rouge : une lecture est en cours.") }}</p>
 
   <h2>{{ _('Lancer une lecture') }}</h2>
   <p>{{ _("Ouvrez la fiche d'un livre ou d'un morceau pour voir ses informations, puis touchez « Lire ». La page « Lecture » permet ensuite de mettre en pause, d'avancer ou de reculer, et de régler le volume.") }}</p>

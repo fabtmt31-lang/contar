@@ -57,8 +57,9 @@ def create_app() -> Flask:
     # sortie audio, pas de watchdog en continu ici : rien ne peut
     # "dériver" tout seul, une application au démarrage suffit (voir
     # app/power_settings.py).
-    from app.power_settings import apply_saved_power_settings
+    from app.power_settings import apply_saved_power_settings, apply_saved_wifi
     apply_saved_power_settings()
+    apply_saved_wifi()
 
     app = Flask(__name__)
     app.secret_key = _get_or_create_secret_key()
@@ -67,9 +68,8 @@ def create_app() -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 Mo par envoi
 
     from app.config import APP_NAME, APP_VERSION
-    from app.i18n import current_language, t, tr
+    from app.i18n import current_language, tr
     from app.web.icons import icon, logo
-    app.jinja_env.globals["t"] = t          # anciennes clés (écran LCD, compatibilité)
     app.jinja_env.globals["_"] = tr         # {{ _('Texte en français') }} dans les gabarits
     app.jinja_env.globals["icon"] = icon    # {{ icon('book') }}
     app.jinja_env.globals["logo"] = logo

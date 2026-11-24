@@ -1,6 +1,8 @@
 """
 Association entre un tag NFC/RFID (son UID) et un contenu de la
-bibliothèque (un livre ou un album entier) — étape 30.
+bibliothèque : une histoire, un album entier ou une liste de lecture
+(v0.11), avec la façon de le jouer (reprise, ordre, boucle) et
+l'avancement propre au tag.
 
 Volontairement simple : une seule table, une seule association par tag —
 poser un tag déjà associé sur un autre livre/album remplace l'ancienne
@@ -17,19 +19,72 @@ from app.database import get_connection
 
 
 class TagManager:
-    def associate(self, uid_tag: str, kind: str, item_id: int) -> None:
+    KINDS = ("book", "album", "playlist")
+
+    def associate(self, uid_tag: str, kind: str, item_id: int, *,
+                  resume: bool = True, shuffle: bool = False, loop: bool = False) -> None:
+        """Associe (ou réassocie) un tag. Changer de contenu efface
+        l'avancement du tag : il repartira du début du nouveau contenu."""
         conn = get_connection()
+        previous = conn.execute(
+            "SELECT kind, item_id FROM tag_associations WHERE uid_tag = ?", (uid_tag,)
+        ).fetchone()
         conn.execute(
-            "INSERT INTO tag_associations (uid_tag, kind, item_id) VALUES (?, ?, ?) "
-            "ON CONFLICT(uid_tag) DO UPDATE SET kind = excluded.kind, item_id = excluded.item_id",
-            (uid_tag, kind, item_id),
+            "INSERT INTO tag_associations (uid_tag, kind, item_id, resume, shuffle, loop) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(uid_tag) DO UPDATE SET kind = excluded.kind, item_id = excluded.item_id, "
+            "resume = excluded.resume, shuffle = excluded.shuffle, loop = excluded.loop",
+            (uid_tag, kind, item_id, int(resume), int(shuffle), int(loop)),
         )
+        if previous is None or (previous["kind"], previous["item_id"]) != (kind, item_id):
+            conn.execute("DELETE FROM tag_progress WHERE uid_tag = ?", (uid_tag,))
+        conn.commit()
+        conn.close()
+
+    def set_options(self, uid_tag: str, *, resume: bool, shuffle: bool, loop: bool) -> None:
+        conn = get_connection()
+        old = conn.execute("SELECT shuffle FROM tag_associations WHERE uid_tag = ?", (uid_tag,)).fetchone()
+        conn.execute(
+            "UPDATE tag_associations SET resume = ?, shuffle = ?, loop = ? WHERE uid_tag = ?",
+            (int(resume), int(shuffle), int(loop), uid_tag),
+        )
+        if old is not None and bool(old["shuffle"]) != shuffle:
+            # L'ordre enregistré ne correspond plus : on repart du début.
+            conn.execute("DELETE FROM tag_progress WHERE uid_tag = ?", (uid_tag,))
         conn.commit()
         conn.close()
 
     def dissociate(self, uid_tag: str) -> None:
         conn = get_connection()
         conn.execute("DELETE FROM tag_associations WHERE uid_tag = ?", (uid_tag,))
+        conn.execute("DELETE FROM tag_progress WHERE uid_tag = ?", (uid_tag,))
+        conn.commit()
+        conn.close()
+
+    # ---- Avancement par tag (v0.11) ----------------------------------------
+
+    def get_progress(self, uid_tag: str):
+        conn = get_connection()
+        row = conn.execute("SELECT * FROM tag_progress WHERE uid_tag = ?", (uid_tag,)).fetchone()
+        conn.close()
+        return row
+
+    def save_progress(self, uid_tag: str, queue_json: str, queue_index: int, position_ms: int) -> None:
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO tag_progress (uid_tag, queue, queue_index, position_ms, updated_at) "
+            "VALUES (?, ?, ?, ?, datetime('now', 'localtime')) "
+            "ON CONFLICT(uid_tag) DO UPDATE SET queue = excluded.queue, "
+            "queue_index = excluded.queue_index, position_ms = excluded.position_ms, "
+            "updated_at = excluded.updated_at",
+            (uid_tag, queue_json, int(queue_index), max(0, int(position_ms))),
+        )
+        conn.commit()
+        conn.close()
+
+    def clear_progress(self, uid_tag: str) -> None:
+        conn = get_connection()
+        conn.execute("DELETE FROM tag_progress WHERE uid_tag = ?", (uid_tag,))
         conn.commit()
         conn.close()
 
@@ -68,6 +123,10 @@ class TagManager:
         il n'y en a jamais qu'un, mais rien n'empêche un parent d'avoir
         associé deux tags de secours au même livre/album)."""
         conn = get_connection()
+        conn.execute(
+            "DELETE FROM tag_progress WHERE uid_tag IN "
+            "(SELECT uid_tag FROM tag_associations WHERE kind = ? AND item_id = ?)", (kind, item_id)
+        )
         conn.execute(
             "DELETE FROM tag_associations WHERE kind = ? AND item_id = ?", (kind, item_id)
         )

@@ -6,7 +6,7 @@
 <div class="page-head">
   <div class="page-head-text">
     <h1>{{ _('Énergie') }}</h1>
-    <p class="lead">{{ _("Réduit la chaleur et la consommation de la boîte en coupant ce qui n'est pas utilisé. Bluetooth, voyants et détection caméra ou écran sont désactivés en permanence au niveau matériel (aucun réglage nécessaire) : seuls l'HDMI et le mode processeur se choisissent ici.") }}</p>
+    <p class="lead">{{ _("Réduit la chaleur et la consommation de la boîte. Bluetooth, voyants de la carte et détection caméra ou écran sont désactivés en permanence (aucun réglage nécessaire) : l'HDMI, le mode processeur, la veille et l'extinction automatiques se choisissent ici.") }}</p>
   </div>
 </div>
 
@@ -34,13 +34,20 @@
   </section>
 
   <section class="card">
-    <h2>{{ _('Écran de la boîte') }}</h2>
+    <h2>{{ _('Veille et extinction') }}</h2>
     <div class="field-row">
-      <label for="lcd_backlight_timeout">{{ _('Extinction du rétroéclairage après (secondes)') }}</label>
-      <input type="number" id="lcd_backlight_timeout" name="lcd_backlight_timeout"
-             min="10" max="3600" value="{{ lcd_backlight_timeout }}">
+      <label for="standby_minutes">{{ _('Veille légère après (minutes)') }}</label>
+      <input type="number" id="standby_minutes" name="standby_minutes" min="0" max="240" value="{{ standby_minutes }}">
     </div>
-    <p class="hint">{{ _("Le rétroéclairage s'éteint tout seul après ce délai sans bouton pressé ni tag posé, même pendant une lecture, pour ne pas déranger une chambre la nuit. 120 secondes par défaut.") }}</p>
+    <div class="field-row">
+      <label for="shutdown_minutes">{{ _('Extinction après (minutes)') }}</label>
+      <input type="number" id="shutdown_minutes" name="shutdown_minutes" min="0" max="720" value="{{ shutdown_minutes }}">
+    </div>
+    <p class="hint">{{ _("Comptées à partir du moment où plus rien ne joue et où aucun tag n'est posé. En veille légère, poser un tag relance la lecture tout de suite. Une fois éteinte, la boîte se rallume avec son bouton de réveil, ou en débranchant puis rebranchant son câble. 0 = jamais. Elle ne s'éteint jamais pendant qu'elle est reliée à un ordinateur.") }}</p>
+    <p class="hint">{{ _("Bouton de réveil : un bouton-poussoir entre la broche 5 (GPIO 3) et la broche 6 (masse). Boîte allumée, un appui long (2 secondes) l'éteint.") }}</p>
+    {% if power_state == 'standby' %}
+      <p class="notice">{{ icon('moon') }}<span>{{ _('La boîte est en veille légère.') }}</span></p>
+    {% endif %}
   </section>
 
   <button type="submit" class="btn btn-primary btn-block">{{ _('Enregistrer') }}</button>

@@ -30,8 +30,12 @@ from app.network_apply import forget_wifi_network
 from app.network_status import get_wifi_status, scan_wifi_networks
 from app import wifi_fallback
 from app import nfc_controller
-from app import usb_import
+from app import depot_import
 from app import library_delete
+from app import power_manager
+from app import tag_playback
+from app import updater
+from app import usb_gadget
 from app.pin import PinManager
 from app.player import player_controller
 from app.playlist import PlaylistManager
@@ -79,8 +83,6 @@ _ONBOARDING_EXEMPT_ENDPOINTS = {
     "main.onboarding_pin", "main.onboarding_wifi", "main.onboarding_wifi_skip",
     "main.onboarding_tutoriel", "main.onboarding_finish",
     "main.network_trial_state",
-    # Étape « Tags maîtres » de l'assistant (v0.10) et la capture d'un tag.
-    "main.onboarding_tags", "main.set_master_tag", "main.clear_master_tag",
     "main.start_tag_capture", "main.cancel_tag_capture", "main.tag_capture_state",
 }
 
@@ -99,20 +101,12 @@ def require_onboarding():
         return redirect(url_for("main.onboarding_pin"))
 
 
-# Pendant un import par clé USB (app/usb_import.py), la bibliothèque est en
-# train d'être recomposée : un fichier envoyé ou supprimé à ce moment-là
-# pourrait se perdre dans la bascule. Ces quatre actions attendent la fin.
-_BLOCKED_DURING_IMPORT = {
-    "main.upload_books", "main.upload_music",
-    "main.delete_book_route", "main.delete_album_route",
-}
-
-
 @main_bp.before_request
-def wait_for_import():
-    if request.endpoint in _BLOCKED_DURING_IMPORT and session.get("authenticated") and usb_import.is_busy():
-        flash("Un import par clé USB est en cours : réessayez dans un instant.")
-        return redirect(url_for("main.import_page"))
+def note_parent_activity():
+    """Un parent sur l'administration : la boîte ne se met pas en veille
+    (les pages relues en boucle ne comptent pas, voir app/power_manager.py)."""
+    if request.endpoint not in power_manager.PASSIVE_ENDPOINTS:
+        power_manager.note_activity()
 
 
 @main_bp.route("/login", methods=["GET", "POST"])
@@ -140,29 +134,29 @@ def logout():
 
 
 # ---- Assistant de bienvenue (après une réinitialisation usine) -------------
-# Quatre étapes (voir require_onboarding ci-dessus, qui empêche tout accès
+# Trois étapes (voir require_onboarding ci-dessus, qui empêche tout accès
 # au reste de l'appli tant qu'elles n'ont pas été menées à leur terme) :
 # créer un vrai code PIN (l'ancien a été effacé), proposer de se connecter
-# au Wifi de la maison, proposer de déclarer les deux tags maîtres de
-# l'import par clé USB (v0.10) — ces deux étapes peuvent être passées —,
-# puis quelques diapos expliquant le fonctionnement.
+# au Wifi de la maison (étape facultative), puis quelques diapos
+# expliquant le fonctionnement.
 
-ONBOARDING_STEPS = 4
+ONBOARDING_STEPS = 3
 
 ONBOARDING_SLIDES = [
     {
         "icon": "import",
         "title": "Ajoutez des histoires et de la musique",
-        "text": "Par clé USB : rangez vos fichiers audio (mp3, m4a, m4b) dans un dossier "
-                "« Audiolibre », avec « Livres » et « Musiques », branchez la clé sur la boîte et "
-                "posez le tag « Ajouter ». Ou ouvrez « Import » dans le menu, depuis un téléphone "
-                "ou un ordinateur du même réseau, et envoyez-les.",
+        "text": "Reliez la boîte à un ordinateur par son câble USB-C : un disque « CONTAR » "
+                "apparaît. Copiez vos fichiers audio (mp3, m4a, m4b) dans « Histoires » ou dans "
+                "un dossier de « Musiques », puis éjectez le disque : la boîte les range. Vous "
+                "pouvez aussi les envoyer depuis « Import », dans le menu.",
     },
     {
         "icon": "tag",
         "title": "Un tag pour chaque histoire",
-        "text": "Dans la Bibliothèque, touchez « Sans tag » puis posez un tag sur la boîte : "
-                "l'enfant n'aura plus qu'à poser ce tag pour lancer son histoire.",
+        "text": "Dans Tags, touchez « Associer un tag » puis posez un tag sur la boîte. "
+                "L'enfant pose le tag : ça joue. Il le retire : ça s'arrête, et la boîte retient "
+                "où il en était. Il le repose aussitôt : l'histoire repart du début.",
     },
     {
         "icon": "list",
@@ -223,9 +217,9 @@ def onboarding_wifi():
                 wifi_ssid, wifi_password,
                 network["ip_mode"], network["static_ip"], network["static_netmask"],
                 network["static_gateway"], network["static_dns"],
-                back_endpoint="main.onboarding_wifi", next_endpoint="main.onboarding_tags",
+                back_endpoint="main.onboarding_wifi", next_endpoint="main.onboarding_tutoriel",
             )
-        return redirect(url_for("main.onboarding_tags"))
+        return redirect(url_for("main.onboarding_tutoriel"))
     return render_template(
         "onboarding_wifi.html",
         wifi_networks=scan_wifi_networks(),
@@ -238,16 +232,7 @@ def onboarding_wifi():
 def onboarding_wifi_skip():
     if not settings_manager.is_onboarding_pending():
         return redirect(url_for("main.now_playing"))
-    return redirect(url_for("main.onboarding_tags"))
-
-
-@main_bp.route("/bienvenue/tags")
-def onboarding_tags():
-    """Étape 3 : déclarer les deux tags maîtres de l'import par clé USB.
-    Facultative — on peut continuer sans, et le faire plus tard dans Tags."""
-    if not settings_manager.is_onboarding_pending():
-        return redirect(url_for("main.now_playing"))
-    return render_template("onboarding_tags.html", master_tags=settings_manager.get_master_tags())
+    return redirect(url_for("main.onboarding_tutoriel"))
 
 
 @main_bp.route("/bienvenue/tutoriel")
@@ -601,6 +586,7 @@ def rename_playlist(playlist_id: int):
 @main_bp.route("/listes/<int:playlist_id>/supprimer", methods=["POST"])
 def delete_playlist(playlist_id: int):
     playlist_manager.delete(playlist_id)
+    tag_manager.dissociate_item("playlist", playlist_id)
     flash("Liste de lecture supprimée.")
     return redirect(url_for("main.playlists"))
 
@@ -655,41 +641,25 @@ def play_playlist_route(playlist_id: int):
 
 
 # ---- Import -------------------------------------------------------------
-# Deux façons d'apporter des histoires à la boîte :
-# - par clé USB branchée sur la boîte (v0.9, voir app/usb_import.py) : la
-#   page montre ce que contient la clé et propose Ajouter ou Remplacer —
-#   les mêmes actions que les deux tags maîtres ;
+# Deux façons d'apporter des histoires à la boîte (v0.11) :
+# - le disque de dépôt « CONTAR », quand la boîte est reliée à un ordinateur
+#   par son câble USB-C (voir app/usb_gadget.py et app/depot_import.py) ;
 # - en envoyant des fichiers depuis l'appareil qui affiche la page (routes
 #   upload_books et upload_music, inchangées).
 
-# Message affiché quand un import est refusé ou n'a pas abouti.
-_IMPORT_MESSAGES = {
-    "pas_de_cle": "Aucune clé USB reconnue : branchez-la sur la boîte.",
-    "cle_inconnue": "Cette clé n'a pas de dossier « Audiolibre ».",
-    "cle_vide": "La clé ne contient aucune histoire ni musique : rien n'a été changé.",
-    "rien": "Tout est déjà sur la boîte : rien à importer.",
-    "place": "Pas assez de place sur la boîte pour cet import.",
-    "occupe": "Un import est déjà en cours.",
-    "cle_retiree": "La clé a été retirée pendant l'import : rien n'a été changé.",
-    "copie": "L'import n'a pas pu se terminer : rien n'a été changé.",
+_DEPOT_MESSAGES = {
+    "ok": "Fichiers rangés dans la bibliothèque.",
+    "place": "Pas assez de place sur la boîte : le disque de dépôt n'a pas été vidé.",
+    "copie": "Le rangement n'a pas pu se terminer : réessayez en éjectant de nouveau le disque.",
+    "vide": "Le disque de dépôt était vide.",
 }
 
 
 def _usb_context() -> dict:
-    status = usb_import.get_status()
-    masters = settings_manager.get_master_tags()
-    status["masters_ready"] = all(masters.values())
-    conn = get_connection()
-    status["untagged_books"] = conn.execute(
-        "SELECT COUNT(*) FROM books WHERE id NOT IN (SELECT item_id FROM tag_associations WHERE kind = 'book')"
-    ).fetchone()[0]
-    status["untagged_albums"] = conn.execute(
-        "SELECT COUNT(*) FROM albums WHERE id NOT IN (SELECT item_id FROM tag_associations WHERE kind = 'album')"
-    ).fetchone()[0]
-    conn.close()
-    status["messages"] = _IMPORT_MESSAGES
-    status["history"] = usb_import.history(8)
-    return status
+    context = usb_gadget.status()
+    context["history"] = [entry for entry in depot_import.history(8) if entry["mode"] == "depot"]
+    context["messages"] = _DEPOT_MESSAGES
+    return context
 
 
 @main_bp.route("/import")
@@ -697,31 +667,11 @@ def import_page():
     return render_template("import.html", active="import", usb=_usb_context())
 
 
-@main_bp.route("/import/cle")
-def import_usb_panel():
-    """Le cadre « Clé USB » seul, relu toutes les deux secondes par la page
-    (static/js/import.js) pour suivre la clé et l'avancement d'un import."""
-    return render_template("_import_usb.html", usb=_usb_context())
-
-
-@main_bp.route("/import/cle/lancer", methods=["POST"])
-def import_usb_start():
-    mode = request.form.get("mode") or ""
-    code = usb_import.start_import(mode, "web") if mode in usb_import.MODES else "copie"
-    if code != "ok":
-        flash(_IMPORT_MESSAGES.get(code, _IMPORT_MESSAGES["copie"]))
-    return redirect(url_for("main.import_page"))
-
-
-@main_bp.route("/import/annuler-remplacement", methods=["POST"])
-def import_undo():
-    code = usb_import.undo_last_replace("web")
-    flash({
-        "ok": "Remplacement annulé : la boîte a retrouvé son contenu précédent.",
-        "rien": "Il n'y a pas de remplacement à annuler.",
-        "occupe": "Un import est déjà en cours.",
-    }.get(code, "L'annulation n'a pas pu se terminer."))
-    return redirect(url_for("main.import_page"))
+@main_bp.route("/import/usb")
+def usb_state():
+    """État du câble USB-C, relu toutes les deux secondes par la page Import."""
+    context = usb_gadget.status()
+    return jsonify({key: context[key] for key in ("available", "connected", "busy", "undervoltage")})
 
 
 # ---- Utilitaires d'upload -------------------------------------------------
@@ -969,8 +919,47 @@ def settings_tags():
         associations=associations,
         books=books,
         albums=albums,
-        master_tags=settings_manager.get_master_tags(),
+        playlists=playlist_manager.list_all(),
+        present_uid=nfc_controller.present_uid(),
+        double_enabled=settings_manager.get_tag_double_enabled(),
+        double_window=settings_manager.get_tag_double_window(),
     )
+
+
+@main_bp.route("/reglages/tags/geste", methods=["POST"])
+def set_tag_gesture():
+    try:
+        window = float((request.form.get("double_window") or "3").replace(",", "."))
+    except ValueError:
+        window = 3.0
+    settings_manager.set_tag_gesture(request.form.get("double_enabled") == "on", window)
+    flash("Réglages enregistrés.")
+    return redirect(url_for("main.settings_tags"))
+
+
+@main_bp.route("/reglages/tags/options", methods=["POST"])
+def set_tag_options():
+    uid_tag = (request.form.get("uid_tag") or "").strip()
+    if uid_tag and tag_manager.get(uid_tag) is not None:
+        tag_manager.set_options(
+            uid_tag,
+            resume=request.form.get("resume") == "on",
+            shuffle=request.form.get("shuffle") == "on",
+            loop=request.form.get("loop") == "on",
+        )
+        flash("Réglages enregistrés.")
+    return redirect(url_for("main.settings_tags") + "#tag-" + uid_tag)
+
+
+@main_bp.route("/reglages/tags/zero", methods=["POST"])
+def reset_tag_progress():
+    uid_tag = (request.form.get("uid_tag") or "").strip()
+    if uid_tag:
+        tag_manager.clear_progress(uid_tag)
+        if player_controller.current_context() == tag_playback.context_for(uid_tag):
+            player_controller.stop()
+        flash("Avancement remis à zéro : ce tag repartira du début.")
+    return redirect(url_for("main.settings_tags") + "#tag-" + uid_tag)
 
 
 @main_bp.route("/reglages/tags/capture/demarrer", methods=["POST"])
@@ -997,18 +986,27 @@ def tag_capture_state():
 @main_bp.route("/reglages/tags/associer", methods=["POST"])
 def associate_tag():
     uid_tag = request.form.get("uid_tag")
-    target = request.form.get("target") or ""  # "book:12" ou "album:5"
+    target = request.form.get("target") or ""  # "book:12", "album:5" ou "playlist:2"
     kind, _sep, raw_id = target.partition(":")
-    if uid_tag and settings_manager.master_tag_role(uid_tag):
-        # Un tag maître (import par clé USB) ne lance jamais d'histoire.
-        flash("Ce tag est un tag maître : il ne peut pas lancer une histoire.")
-    elif uid_tag and kind in ("book", "album") and raw_id.isdigit():
-        tag_manager.associate(uid_tag, kind, int(raw_id))
+    if uid_tag and kind in TagManager.KINDS and raw_id.isdigit():
+        existing = tag_manager.get(uid_tag)
+        if "resume" in request.form or "options" in request.form:
+            options = {
+                "resume": request.form.get("resume") == "on",
+                "shuffle": request.form.get("shuffle") == "on",
+                "loop": request.form.get("loop") == "on",
+            }
+        elif existing is not None:
+            options = {key: bool(existing[key]) for key in ("resume", "shuffle", "loop")}
+        else:
+            # Par défaut : une histoire reprend où on en était ; la musique aussi.
+            options = {"resume": True, "shuffle": False, "loop": False}
+        tag_manager.associate(uid_tag, kind, int(raw_id), **options)
         if "tag_name" in request.form:
             tag_manager.set_name(uid_tag, request.form.get("tag_name") or "")
         flash("Tag associé.")
     else:
-        flash("Choisissez un livre ou un album avant de valider.")
+        flash("Choisissez une histoire, un album ou une liste avant de valider.")
     return redirect(url_for("main.settings_tags"))
 
 
@@ -1032,44 +1030,6 @@ def rename_tag():
     return redirect(url_for("main.settings_tags"))
 
 
-# Tags maîtres (v0.9) : deux tags réservés à l'import par clé USB, l'un pour
-# « Ajouter », l'autre pour « Remplacer ». Déclarés par la même capture que
-# les tags d'histoire. Voir app/usb_import.py et app/nfc_controller.py.
-
-def _master_tags_page() -> str:
-    """Page où revenir après avoir déclaré ou retiré un tag maître : la
-    page Tags, ou l'assistant de bienvenue si c'est de là qu'on vient."""
-    if request.form.get("retour") == "bienvenue" and settings_manager.is_onboarding_pending():
-        return url_for("main.onboarding_tags")
-    return url_for("main.settings_tags")
-
-
-@main_bp.route("/reglages/tags/maitre", methods=["POST"])
-def set_master_tag():
-    role = request.form.get("role") or ""
-    uid_tag = (request.form.get("uid_tag") or "").strip()
-    masters = settings_manager.get_master_tags()
-    if role not in masters or not uid_tag:
-        flash("Tag non reconnu : recommencez.")
-    elif tag_manager.get(uid_tag) is not None:
-        flash("Ce tag lance déjà une histoire ou un album : dissociez-le d'abord.")
-    elif any(uid == uid_tag for other, uid in masters.items() if other != role):
-        flash("Ce tag est déjà l'autre tag maître.")
-    else:
-        settings_manager.set_master_tag(role, uid_tag)
-        flash("Tag maître enregistré.")
-    return redirect(_master_tags_page())
-
-
-@main_bp.route("/reglages/tags/maitre/retirer", methods=["POST"])
-def clear_master_tag():
-    role = request.form.get("role") or ""
-    if role in settings_manager.get_master_tags():
-        settings_manager.clear_master_tag(role)
-        flash("Tag maître retiré.")
-    return redirect(_master_tags_page())
-
-
 # ---- Énergie (HDMI + mode éco CPU) -------------------------------------------
 
 @main_bp.route("/reglages/energie")
@@ -1080,7 +1040,9 @@ def settings_energie():
         hdmi_enabled=settings_manager.get_power_hdmi_enabled(),
         eco_mode=settings_manager.get_power_eco_mode(),
         audio_uses_hdmi=settings_manager.get_audio_output_preference() in ("hdmi1", "hdmi2"),
-        lcd_backlight_timeout=settings_manager.get_lcd_backlight_timeout(),
+        standby_minutes=settings_manager.get_idle_standby_minutes(),
+        shutdown_minutes=settings_manager.get_idle_shutdown_minutes(),
+        power_state=power_manager.state(),
     )
 
 
@@ -1088,12 +1050,13 @@ def settings_energie():
 def set_power_settings_route():
     hdmi_enabled = request.form.get("hdmi_enabled") == "on"
     eco_mode = request.form.get("eco_mode") == "on"
-    raw_timeout = request.form.get("lcd_backlight_timeout") or ""
+    raw_standby = request.form.get("standby_minutes") or ""
+    raw_shutdown = request.form.get("shutdown_minutes") or ""
 
     settings_manager.set_power_hdmi_enabled(hdmi_enabled)
     settings_manager.set_power_eco_mode(eco_mode)
-    if raw_timeout.isdigit():
-        settings_manager.set_lcd_backlight_timeout(int(raw_timeout))
+    if raw_standby.isdigit() and raw_shutdown.isdigit():
+        settings_manager.set_idle_delays(int(raw_standby), int(raw_shutdown))
     ok, message = power_settings.apply_power_settings(hdmi_enabled, eco_mode)
     flash(message or ("Réglages enregistrés." if ok else "Échec de l'application du réglage."))
     return redirect(url_for("main.settings_energie"))
@@ -1399,6 +1362,7 @@ def settings_network():
     return render_template(
         "settings_network.html",
         active="reglages",
+        wifi_enabled=settings_manager.get_wifi_enabled(),
         network=settings_manager.get_network_config(),
         wifi_status=get_wifi_status(),
         wifi_networks=scan_wifi_networks(),
@@ -1406,6 +1370,68 @@ def settings_network():
         fallback_status=wifi_fallback.get_fallback_status(),
         trial=_recent_trial(),
     )
+
+
+@main_bp.route("/reglages/reseau/wifi", methods=["POST"])
+def set_wifi_enabled():
+    enabled = request.form.get("wifi_enabled") == "on"
+    settings_manager.set_wifi_enabled(enabled)
+    ok, message = power_settings.apply_wifi(enabled)
+    if ok:
+        flash("Wi-Fi activé." if enabled else "Wi-Fi coupé : la boîte se règle par le câble USB-C.")
+    else:
+        flash(message or "Échec de l'application du réglage.")
+    return redirect(url_for("main.settings_network"))
+
+
+# ---- Mise à jour depuis GitHub (v0.11, voir app/updater.py) ----------------
+
+@main_bp.route("/reglages/mise-a-jour", methods=["GET", "POST"])
+def settings_update():
+    latest = None
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "source":
+            token = request.form.get("token")
+            if request.form.get("forget_token") == "on":
+                token = ""
+            elif not token:
+                token = None   # champ laissé vide : jeton inchangé
+            settings_manager.set_update_source(request.form.get("repo") or "", token)
+            flash("Réglages enregistrés.")
+            return redirect(url_for("main.settings_update"))
+        if action == "check":
+            latest = updater.check()
+        elif action == "install":
+            _ok, message = updater.install()
+            flash(message)
+            return redirect(url_for("main.settings_update"))
+    state = updater.state()
+    return render_template(
+        "settings_update.html",
+        active="reglages",
+        repo=settings_manager.get_update_repo(),
+        has_token=bool(settings_manager.get_update_token()),
+        latest=latest or state.get("latest"),
+        state=state,
+        log=updater.last_log(),
+    )
+
+
+# ---- Lecteur NFC simulé (PC de développement, CONTAR_NFC=simu) --------------
+
+@main_bp.route("/api/dev/tag", methods=["POST"])
+def dev_tag():
+    """Pose ou retire un tag « pour de faux » : {"uid": "04A1"} ou {"uid": null}."""
+    reader = nfc_controller.simulated_reader()
+    if reader is None:
+        return jsonify({"ok": False, "error": "lecteur simulé inactif (CONTAR_NFC=simu)"}), 404
+    uid = (request.get_json(silent=True) or {}).get("uid") or request.form.get("uid")
+    if uid:
+        reader.present(str(uid).strip().upper())
+    else:
+        reader.absent()
+    return jsonify({"ok": True, "present": reader.current})
 
 
 def _recent_trial() -> dict | None:
@@ -1501,28 +1527,36 @@ def _playlist_name(playlist_id) -> Optional[str]:
 
 
 def _tag_association_to_dict(assoc) -> dict:
-    """Enrichit une ligne tag_associations avec le titre/emoji/couleur du
-    livre ou de l'album visé, pour l'affichage (Réglages → Tags NFC).
-    Reste affichable même si le livre/album a été supprimé depuis
-    (bibliothèque modifiée sans repasser par la dissociation du tag)."""
-    if assoc["kind"] == "book":
+    """Enrichit une ligne tag_associations avec le titre/couleur du contenu
+    visé, ses options et l'avancement du tag, pour l'affichage (page Tags).
+    Reste affichable même si le contenu a été supprimé depuis."""
+    kind = assoc["kind"]
+    if kind == "book":
         row = _fetch_row("book", assoc["item_id"])
         title = row["title"] if row is not None else tr("(livre supprimé)")
-        emoji = row["emoji"] if row is not None else "❓"
-        color_hex = row["color_hex"] if row is not None else "#CCCCCC"
-    else:
+    elif kind == "album":
         row = _fetch_album(assoc["item_id"])
         title = row["name"] if row is not None else tr("(album supprimé)")
-        emoji = row["emoji"] if row is not None else "❓"
-        color_hex = row["color_hex"] if row is not None else "#CCCCCC"
+    else:
+        row = playlist_manager.get(assoc["item_id"])
+        title = row["name"] if row is not None else tr("(liste supprimée)")
+    progress = tag_playback.describe_progress(assoc["uid_tag"], assoc)
+    if progress is not None:
+        progress["position"] = _format_duration(progress["position_ms"])
     return {
         "uid_tag": assoc["uid_tag"],
         "tag_name": tag_manager.get_name(assoc["uid_tag"]),
-        "kind": assoc["kind"],
+        "kind": kind,
         "item_id": assoc["item_id"],
         "title": title,
-        "emoji": emoji,
-        "color_hex": color_hex,
+        "missing": row is None,
+        "emoji": row["emoji"] if row is not None else "❓",
+        "color_hex": row["color_hex"] if row is not None else "#CCCCCC",
+        "resume": bool(assoc["resume"]),
+        "shuffle": bool(assoc["shuffle"]),
+        "loop": bool(assoc["loop"]),
+        "progress": progress,
+        "playing": player_controller.current_context() == tag_playback.context_for(assoc["uid_tag"]),
     }
 
 

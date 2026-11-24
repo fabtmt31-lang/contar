@@ -1,0 +1,1 @@
+Un dossier = un album. Créez ici un dossier par album et mettez-y les morceaux.

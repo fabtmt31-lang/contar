@@ -207,17 +207,6 @@ class SettingsManager:
     def set_power_eco_mode(self, enabled: bool) -> None:
         _set_setting("power_eco_mode", "1" if enabled else "0")
 
-    # ---- Délai avant extinction du rétroéclairage de l'écran LCD -----------
-    # Voir app/lcd_display.py, qui lit cette valeur à chaque cycle d'affichage
-    # (pas seulement au démarrage) : un changement ici prend effet
-    # immédiatement, sans redémarrage du service.
-
-    def get_lcd_backlight_timeout(self) -> int:
-        return int(_get_setting("lcd_backlight_timeout_seconds", "120"))
-
-    def set_lcd_backlight_timeout(self, seconds: int) -> None:
-        _set_setting("lcd_backlight_timeout_seconds", str(seconds))
-
     # ---- Plafond de volume (Réglages → Général) -----------------------------
     # Lu par PlayerController.set_volume() (app/player.py) à chaque
     # ajustement — un changement ici s'applique donc immédiatement, sans
@@ -318,32 +307,61 @@ class SettingsManager:
             value = max(-self.TONE_LIMIT, min(self.TONE_LIMIT, int(value)))
             _set_setting(f"tone_{band}", str(value))
 
-    # ---- Tags maîtres de l'import par clé USB (v0.9) ------------------------
-    # Deux tags réservés : l'un lance « Ajouter », l'autre « Remplacer »
-    # (voir app/usb_import.py et app/nfc_controller.py). Un tag maître ne
-    # lance jamais d'histoire.
+    # ---- Geste du tag (v0.11) ----------------------------------------------
+    # Poser un tag lance la lecture, le retirer la met en pause. Le reposer
+    # dans les « tag_double_window » secondes qui suivent le retrait remet
+    # l'avancement de ce tag à zéro (voir app/tag_gesture.py).
 
-    MASTER_TAG_ROLES = ("ajouter", "remplacer")
+    def get_tag_double_enabled(self) -> bool:
+        return _get_setting("tag_double_enabled", "1") == "1"
 
-    def get_master_tags(self) -> dict:
-        return {role: _get_setting(f"master_tag_{role}", "") or "" for role in self.MASTER_TAG_ROLES}
+    def get_tag_double_window(self) -> float:
+        try:
+            return max(1.0, min(10.0, float(_get_setting("tag_double_window", "3"))))
+        except ValueError:
+            return 3.0
 
-    def set_master_tag(self, role: str, uid_tag: str) -> None:
-        if role in self.MASTER_TAG_ROLES:
-            _set_setting(f"master_tag_{role}", uid_tag)
+    def set_tag_gesture(self, double_enabled: bool, window_seconds: float) -> None:
+        _set_setting("tag_double_enabled", "1" if double_enabled else "0")
+        _set_setting("tag_double_window", str(max(1.0, min(10.0, float(window_seconds)))))
 
-    def clear_master_tag(self, role: str) -> None:
-        if role in self.MASTER_TAG_ROLES:
-            _set_setting(f"master_tag_{role}", "")
+    # ---- Veille et extinction automatiques (v0.11) ---------------------------
+    # Comptées à partir du moment où plus rien ne joue et où aucun tag n'est
+    # posé (voir app/power_manager.py). 0 = jamais.
 
-    def master_tag_role(self, uid_tag: str) -> str | None:
-        """'ajouter' ou 'remplacer' si ce tag est un tag maître, sinon None."""
-        if not uid_tag:
-            return None
-        for role, uid in self.get_master_tags().items():
-            if uid and uid == uid_tag:
-                return role
-        return None
+    def get_idle_standby_minutes(self) -> int:
+        return int(_get_setting("idle_standby_minutes", "1"))
+
+    def get_idle_shutdown_minutes(self) -> int:
+        return int(_get_setting("idle_shutdown_minutes", "15"))
+
+    def set_idle_delays(self, standby_minutes: int, shutdown_minutes: int) -> None:
+        _set_setting("idle_standby_minutes", str(max(0, min(240, int(standby_minutes)))))
+        _set_setting("idle_shutdown_minutes", str(max(0, min(720, int(shutdown_minutes)))))
+
+    # ---- Wi-Fi activé ou coupé (v0.11) ---------------------------------------
+    # Le câble USB-C suffit à régler la boîte : le Wi-Fi devient un choix.
+
+    def get_wifi_enabled(self) -> bool:
+        return _get_setting("wifi_enabled", "1") == "1"
+
+    def set_wifi_enabled(self, enabled: bool) -> None:
+        _set_setting("wifi_enabled", "1" if enabled else "0")
+
+    # ---- Mise à jour depuis GitHub (v0.11) -----------------------------------
+
+    DEFAULT_UPDATE_REPO = "fabtmt31-lang/contar"
+
+    def get_update_repo(self) -> str:
+        return _get_setting("update_repo", self.DEFAULT_UPDATE_REPO) or self.DEFAULT_UPDATE_REPO
+
+    def get_update_token(self) -> str:
+        return _get_setting("update_token", "") or ""
+
+    def set_update_source(self, repo: str, token: str | None) -> None:
+        _set_setting("update_repo", repo.strip() or self.DEFAULT_UPDATE_REPO)
+        if token is not None:
+            _set_setting("update_token", token.strip())
 
     # ---- Assistant de première configuration ("bienvenue") -----------------
     # Se déclenche après une réinitialisation usine (voir app/factory_reset.py)
