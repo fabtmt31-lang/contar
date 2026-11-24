@@ -1,0 +1,58 @@
+{#- Page d'attente pendant l'essai d'un nouveau Wifi. Elle est envoyée juste
+    avant que la boîte ne quitte le réseau par lequel on l'a demandée : tout
+    ce qu'elle affiche doit donc être déjà dans la page (aucune image ni
+    feuille de style à charger ensuite, hormis celle déjà en mémoire). -#}
+{% extends "base.html" %}
+{% block title %}{{ _('Essai du Wifi') }} — {{ APP_NAME }}{% endblock %}
+{% block body %}
+<main class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-icon">{{ icon('wifi', 32) }}</div>
+    <h1>{{ _('Essai du Wifi « {ssid} »', ssid=ssid) }}</h1>
+    <p class="subtitle">{{ _("La boîte quitte ce réseau pour essayer le nouveau. Comptez environ une minute.") }}</p>
+
+    <p class="pill pill-new" id="trial-status" role="status" style="align-self: center;">{{ _('Essai en cours…') }}</p>
+
+    <p class="hint" style="text-align: left;">
+      <strong>{{ _('Si le Wifi est accepté') }}</strong> : {{ _("la boîte y reste. Reliez cet appareil au même Wifi, puis ouvrez") }}
+      <code>http://{{ hostname }}.local</code>. {{ _("L'adresse s'affiche aussi sur l'écran de la boîte.") }}
+    </p>
+    <p class="hint" style="text-align: left;">
+      <strong>{{ _("S'il est refusé") }}</strong> : {% if on_fallback %}{{ _("le réseau de secours revient. Reconnectez-vous-y : cette page vous dira ce qui n'a pas marché.") }}{% else %}{{ _("la boîte revient à son Wifi précédent : cette page vous dira ce qui n'a pas marché.") }}{% endif %}
+    </p>
+
+    <a href="{{ back_url }}" class="btn btn-outline btn-block">{{ _('Revenir à la page précédente') }}</a>
+  </div>
+</main>
+<script>
+(function () {
+  // Interroge la boîte toutes les 3 secondes. Tant qu'elle est injoignable
+  // (c'est normal pendant l'essai), on réessaie sans rien afficher de plus.
+  var stateUrl = {{ state_url|tojson }};
+  var backUrl = {{ back_url|tojson }};
+  var nextUrl = {{ next_url|tojson }};
+  var status = document.getElementById("trial-status");
+  var accepted = {{ _('Wifi accepté')|tojson }};
+
+  function check() {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 2500);
+    fetch(stateUrl, { cache: "no-store", signal: controller.signal, credentials: "same-origin" })
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) {
+        if (!data) { return; }
+        if (data.state === "ok") {
+          status.textContent = accepted;
+          status.className = "pill pill-ok";
+          setTimeout(function () { window.location.href = nextUrl; }, 1500);
+        } else if (data.state === "echec") {
+          window.location.href = backUrl;
+        }
+      })
+      .catch(function () { /* boîte injoignable pour l'instant */ })
+      .finally(function () { clearTimeout(timer); });
+  }
+  setTimeout(function () { check(); setInterval(check, 3000); }, 8000);
+})();
+</script>
+{% endblock %}

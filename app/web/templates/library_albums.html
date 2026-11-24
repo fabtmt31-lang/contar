@@ -1,0 +1,40 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, tag_pill, library_tabs, tag_filter %}
+{% block title %}{{ _('Musique') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _('Bibliothèque') }}</h1>
+  <a href="{{ url_for('main.import_page') }}" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Importer') }}</span></a>
+</div>
+{{ library_tabs('musique') }}
+{{ tag_filter('main.musique', _('Tous'), total_count, untagged_count, only_untagged) }}
+{% include "_nfc_badge_banner.html" %}
+
+{% if albums %}
+  <ul class="album-grid">
+    {% for album in albums %}
+      <li class="album-tile">
+        <a href="{{ url_for('main.album_detail', album_id=album['id']) }}" class="album-link">
+          {{ cover(album['cover_url'], album['color_hex'], 'music', 'lg') }}
+          <span class="row-title">{{ album['name'] }}</span>
+        </a>
+        <span class="row-actions">
+          {{ tag_pill('album', album['id'], album['has_tag'], album['tag_name']) }}
+          <form method="post" action="{{ url_for('main.delete_album_route', album_id=album['id']) }}"
+                onsubmit='return confirm({{ _("Supprimer définitivement l’album « {name} » et tous ses morceaux ? Les fichiers audio seront effacés de la boîte.", name=album["name"])|tojson }})'>
+            <button type="submit" class="btn-icon" aria-label="{{ _('Supprimer') }}">{{ icon('trash') }}</button>
+          </form>
+        </span>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif only_untagged %}
+  <div class="empty"><p>{{ _('Tous les albums ont un tag.') }}</p></div>
+{% else %}
+  <div class="empty">
+    <p>{{ _("Aucun album pour l'instant.") }}</p>
+    <a href="{{ url_for('main.import_page') }}" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Importer de la musique') }}</span></a>
+  </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include "_nfc_badge.html" %}{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, back %}
+{% block title %}{{ track['title'] }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.album_detail', album['name'] if album else _('Musique'), album_id=track['album_id']) }}
+
+<section class="card detail">
+  {{ cover(track['cover_url'], track.get('album_color_hex', '#8FB6FF'), 'music', 'lg') }}
+  <div class="stack">
+    <h1>{{ track['title'] }}</h1>
+    <p class="lead">{{ track['artist'] or '' }}</p>
+  </div>
+
+  <dl class="facts">
+    {% if track['album'] %}<div><dt>{{ _('Album') }}</dt><dd>{{ track['album'] }}</dd></div>{% endif %}
+    {% if track['year'] %}<div><dt>{{ _('Année') }}</dt><dd>{{ track['year'] }}</dd></div>{% endif %}
+    <div><dt>{{ _('Durée') }}</dt><dd>{{ track['duration_label'] }}</dd></div>
+    <div><dt>{{ _('Progression') }}</dt><dd>{{ track['progress_label'] }}{% if track['finished'] %} · {{ _('terminé') }}{% endif %}</dd></div>
+  </dl>
+
+  <form method="post" action="{{ url_for('main.play_track', track_id=track['id']) }}">
+    <button type="submit" class="btn btn-primary btn-block">{{ icon('play', 18) }}<span>{{ _('Lire ce morceau') }}</span></button>
+  </form>
+</section>
+{% endblock %}

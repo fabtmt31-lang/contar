@@ -1,0 +1,42 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, library_tabs %}
+{% block title %}{{ _('Listes') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _('Bibliothèque') }}</h1>
+  <a href="{{ url_for('main.import_page') }}" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Importer') }}</span></a>
+</div>
+{{ library_tabs('listes') }}
+<p class="lead">{{ _("Une liste de lecture peut mélanger des histoires et de la musique. Créez-en une, puis choisissez ce qu'elle contient et si elle doit boucler ou passer les éléments dans un ordre aléatoire.") }}</p>
+
+<form class="card" method="post" action="{{ url_for('main.playlists') }}">
+  <div class="field">
+    <label for="playlist-name">{{ _('Nouvelle liste de lecture') }}</label>
+    <input type="text" id="playlist-name" name="name" placeholder="{{ _("ex : Pour s'endormir") }}" required>
+  </div>
+  <div class="btn-row"><button type="submit" class="btn btn-primary">{{ icon('plus', 18) }}<span>{{ _('Créer') }}</span></button></div>
+</form>
+
+{% if playlists %}
+  <ul class="list">
+    {% for playlist in playlists %}
+      <li class="row row-link">
+        <a href="{{ url_for('main.playlist_detail', playlist_id=playlist['id']) }}" class="row-main">
+          {{ cover(none, playlist['color_hex'], 'list') }}
+          <span class="row-text">
+            <span class="row-title">{{ playlist['name'] }}</span>
+            <span class="row-sub">
+              <span>{{ _('1 élément') if playlist['item_count'] == 1 else _('{n} éléments', n=playlist['item_count']) }}</span>
+              {%- if playlist['shuffle'] %}<span>·</span>{{ icon('shuffle', 14) }}<span>{{ _('aléatoire') }}</span>{% endif -%}
+              {%- if playlist['loop'] %}<span>·</span>{{ icon('repeat', 14) }}<span>{{ _('boucle') }}</span>{% endif -%}
+            </span>
+          </span>
+        </a>
+        <span class="row-chevron">{{ icon('chevron') }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty"><p>{{ _("Aucune liste de lecture pour l'instant. Créez-en une ci-dessus.") }}</p></div>
+{% endif %}
+{% endblock %}

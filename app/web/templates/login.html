@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Connexion') }} — {{ APP_NAME }}{% endblock %}
+{% block body %}
+<main class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">{{ logo(96) }}<span class="brand-word">contar</span></div>
+    <h1 class="section-label">{{ _('Boîte à histoires') }}</h1>
+    <p class="subtitle">{{ _('Entrez le code parent pour continuer') }}</p>
+
+    <form method="post" class="form">
+      <input type="password" inputmode="numeric" pattern="[0-9]*" name="pin" maxlength="8"
+             autofocus autocomplete="off" placeholder="••••" class="pin-input"
+             aria-label="{{ _('Code parent') }}">
+      <button type="submit" class="btn btn-primary btn-block">{{ _('Valider') }}</button>
+    </form>
+
+    {% if error %}
+      <p class="error" role="alert">{{ _('Code incorrect, réessayez.') }}</p>
+    {% endif %}
+
+    {% if pin_not_configured %}
+      <p class="hint">{{ _("Aucun code n'a encore été choisi : le code par défaut est 1234. Pensez à le changer dans les réglages.") }}</p>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

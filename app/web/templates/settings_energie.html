@@ -1,0 +1,48 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Énergie') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>{{ _('Énergie') }}</h1>
+    <p class="lead">{{ _("Réduit la chaleur et la consommation de la boîte en coupant ce qui n'est pas utilisé. Bluetooth, voyants et détection caméra ou écran sont désactivés en permanence au niveau matériel (aucun réglage nécessaire) : seuls l'HDMI et le mode processeur se choisissent ici.") }}</p>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('main.set_power_settings_route') }}" class="stack-lg">
+  <section class="card">
+    <h2>{{ _('Sorties HDMI') }}</h2>
+    <div class="field-row">
+      <label for="hdmi_enabled">{{ _("Garder l'HDMI allumé") }}</label>
+      <input type="checkbox" id="hdmi_enabled" name="hdmi_enabled" {{ 'checked' if hdmi_enabled else '' }}>
+    </div>
+    {% if audio_uses_hdmi %}
+      <p class="notice">{{ icon('warning') }}<span>{{ _("Le son passe actuellement par HDMI (Réglages → Volume et sortie audio) : l'HDMI reste donc allumé quoi que vous choisissiez ici, pour ne jamais couper le son. Changez la sortie audio si vous voulez pouvoir éteindre l'HDMI.") }}</span></p>
+    {% else %}
+      <p class="hint">{{ _("Décoché par défaut : économise de l'énergie si vous n'utilisez pas de sortie HDMI (image ou son).") }}</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Mode processeur') }}</h2>
+    <div class="field-row">
+      <label for="eco_mode">{{ _('Mode éco') }}</label>
+      <input type="checkbox" id="eco_mode" name="eco_mode" {{ 'checked' if eco_mode else '' }}>
+    </div>
+    <p class="hint">{{ _('Coché par défaut : limite la fréquence du processeur au strict nécessaire, moins de chaleur en usage prolongé. Décochez si la lecture semble saccadée.') }}</p>
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Écran de la boîte') }}</h2>
+    <div class="field-row">
+      <label for="lcd_backlight_timeout">{{ _('Extinction du rétroéclairage après (secondes)') }}</label>
+      <input type="number" id="lcd_backlight_timeout" name="lcd_backlight_timeout"
+             min="10" max="3600" value="{{ lcd_backlight_timeout }}">
+    </div>
+    <p class="hint">{{ _("Le rétroéclairage s'éteint tout seul après ce délai sans bouton pressé ni tag posé, même pendant une lecture, pour ne pas déranger une chambre la nuit. 120 secondes par défaut.") }}</p>
+  </section>
+
+  <button type="submit" class="btn btn-primary btn-block">{{ _('Enregistrer') }}</button>
+</form>
+{% endblock %}

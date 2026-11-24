@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Bienvenue') }} — {{ _('Tags maîtres') }} — {{ APP_NAME }}{% endblock %}
+{% block body %}
+<main class="auth-screen">
+  <div class="auth-card auth-card-wide">
+    <div class="auth-icon">{{ icon('usb', 32) }}</div>
+    <h1>{{ _('Import par clé USB') }}</h1>
+    <p class="section-label">{{ _('Étape {n} sur {total}', n=3, total=4) }}</p>
+    <p class="subtitle">{{ _('Facultatif, vous pourrez le faire plus tard') }}</p>
+    <p class="hint">{{ _("Choisissez deux tags que vous garderez pour vous, et marquez-les (« Ajouter », « Remplacer »). Ils serviront à copier des histoires depuis une clé USB sans ouvrir cette page.") }}</p>
+
+    <div id="capture-banner" class="capture-banner" role="status" hidden>
+      <span id="capture-banner-text">{{ _('Posez le tag maître sur le lecteur…') }}</span>
+      <button type="button" id="capture-cancel" class="btn-icon" aria-label="{{ _('Annuler') }}">{{ icon('close') }}</button>
+    </div>
+
+    <div class="auth-block">
+      {% set master_return = 'bienvenue' %}
+      {% include "_master_tags.html" %}
+    </div>
+
+    <div class="auth-actions">
+      <a href="{{ url_for('main.onboarding_tutoriel') }}" class="btn btn-primary btn-block">
+        <span>{{ _('Continuer') if (master_tags['ajouter'] and master_tags['remplacer']) else _('Passer cette étape') }}</span>{{ icon('arrow-right', 18) }}
+      </a>
+    </div>
+  </div>
+</main>
+<script>
+  window.TAGS_API = {
+    start: "{{ url_for('main.start_tag_capture') }}",
+    state: "{{ url_for('main.tag_capture_state') }}",
+    cancel: "{{ url_for('main.cancel_tag_capture') }}"
+  };
+  window.TAGS_TEXT = { waitingMaster: {{ _('Posez le tag maître sur le lecteur…')|tojson }} };
+</script>
+<script src="{{ url_for('static', filename='js/tags.js') }}?v={{ APP_VERSION }}"></script>
+{% endblock %}

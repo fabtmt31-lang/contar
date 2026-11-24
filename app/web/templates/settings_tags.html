@@ -1,0 +1,102 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover %}
+{% block title %}{{ _('Tags') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>{{ _('Tags') }}</h1>
+    <p class="lead">{{ _("Associez un tag à un livre ou à un album entier : l'enfant n'a plus qu'à le poser sur la boîte pour lancer la lecture. Un album reprend toujours au morceau où il s'était arrêté.") }}</p>
+  </div>
+  <button type="button" class="btn btn-primary" id="capture-start">{{ icon('plus', 18) }}<span>{{ _('Associer un tag') }}</span></button>
+</div>
+
+<div id="capture-banner" class="capture-banner" role="status" hidden>
+  <span id="capture-banner-text">{{ _('Posez le tag à associer sur le lecteur…') }}</span>
+  <button type="button" id="capture-cancel" class="btn-icon" aria-label="{{ _('Annuler') }}">{{ icon('close') }}</button>
+</div>
+
+<section class="card" id="assign-section" hidden>
+  <h2>{{ _('Tag détecté') }} : <code id="assign-uid"></code></h2>
+  <form method="post" action="{{ url_for('main.associate_tag') }}" id="assign-form" class="form">
+    <input type="hidden" name="uid_tag" id="assign-uid-field">
+    <div class="field">
+      <label for="assign-target">{{ _('Associer à') }}</label>
+      <select name="target" id="assign-target" required>
+        <option value="" disabled selected>{{ _('— Choisir —') }}</option>
+        {% if books %}
+          <optgroup label="{{ _('Histoires') }}">
+            {% for book in books %}
+              <option value="book:{{ book['id'] }}">{{ book['title'] }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+        {% if albums %}
+          <optgroup label="{{ _('Albums') }}">
+            {% for album in albums %}
+              <option value="album:{{ album['id'] }}">{{ album['name'] }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="assign-name">{{ _('Nom du tag (facultatif)') }}</label>
+      <input type="text" name="tag_name" id="assign-name" maxlength="40" placeholder="{{ _('ex : Loup bleu') }}">
+    </div>
+    <div class="btn-row"><button type="submit" class="btn btn-primary">{{ _('Associer') }}</button></div>
+  </form>
+</section>
+
+{% if associations %}
+  <section class="stack">
+    <div class="section-label">{{ _('Tags associés') }}</div>
+    <ul class="list">
+      {% for assoc in associations %}
+        <li class="row">
+          <span class="row-main">
+            {{ cover(none, assoc.color_hex, 'book' if assoc.kind == 'book' else 'music') }}
+            <span class="row-text">
+              <span class="row-title">{{ _(assoc.title) }}</span>
+              <span class="row-sub">
+                {% if assoc.tag_name %}<strong class="tag-name">{{ assoc.tag_name }}</strong><span>·</span>{% endif %}
+                <span>{{ _('Histoire') if assoc.kind == 'book' else _('Album') }}</span><span>·</span><code>{{ assoc.uid_tag }}</code>
+              </span>
+            </span>
+          </span>
+          <span class="row-actions">
+            <form method="post" action="{{ url_for('main.rename_tag') }}" class="tag-rename"
+                  data-prompt="{{ _('Nom de ce tag (laisser vide pour le retirer) :') }}" data-current="{{ assoc.tag_name }}">
+              <input type="hidden" name="uid_tag" value="{{ assoc.uid_tag }}">
+              <input type="hidden" name="tag_name" value="">
+              <button type="submit" class="btn btn-ghost">{{ _('Renommer') if assoc.tag_name else _('Nommer') }}</button>
+            </form>
+            <form method="post" action="{{ url_for('main.dissociate_tag') }}"
+                  onsubmit='return confirm({{ _("Dissocier ce tag ?")|tojson }})'>
+              <input type="hidden" name="uid_tag" value="{{ assoc.uid_tag }}">
+              <button type="submit" class="btn btn-ghost-danger">{{ _('Dissocier') }}</button>
+            </form>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% else %}
+  <div class="empty"><p>{{ _("Aucun tag associé pour l'instant.") }}</p></div>
+{% endif %}
+
+{% include "_master_tags.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+  window.TAGS_API = {
+    start: "{{ url_for('main.start_tag_capture') }}",
+    state: "{{ url_for('main.tag_capture_state') }}",
+    cancel: "{{ url_for('main.cancel_tag_capture') }}"
+  };
+  window.TAGS_TEXT = {
+    waiting: {{ _('Posez le tag à associer sur le lecteur…')|tojson }},
+    waitingMaster: {{ _('Posez le tag maître sur le lecteur…')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/tags.js') }}?v={{ APP_VERSION }}"></script>
+{% endblock %}

@@ -1,0 +1,21 @@
+{%- set in_library = active in ('livres', 'musique', 'listes') -%}
+{%- macro nav_item(endpoint, key, icon_name, label, extra_class='') -%}
+  {%- set on = (key == 'bibliotheque' and in_library) or active == key -%}
+  <a href="{{ url_for(endpoint) }}" class="nav-item {{ extra_class }} {{ 'is-active' if on else '' }}"{% if on %} aria-current="page"{% endif %}>
+    <span class="nav-icon">{{ icon(icon_name) }}</span><span class="nav-label">{{ label }}</span>
+  </a>
+{%- endmacro -%}
+<nav class="app-nav" aria-label="{{ _('Navigation principale') }}">
+  <a class="nav-brand" href="{{ url_for('main.now_playing') }}">{{ logo(60) }}<span class="brand-word">contar</span></a>
+  <div class="nav-links">
+    {{ nav_item('main.now_playing', 'lecture', 'headphones', _('Lecture')) }}
+    {{ nav_item('main.livres', 'bibliotheque', 'library', _('Bibliothèque')) }}
+    {{ nav_item('main.settings_tags', 'tags', 'tag', _('Tags')) }}
+    {{ nav_item('main.import_page', 'import', 'import', _('Import')) }}
+    {{ nav_item('main.reglages', 'reglages', 'settings', _('Réglages'), 'nav-item-settings') }}
+  </div>
+  <div class="nav-foot">
+    {{ nav_item('main.reglages', 'reglages', 'settings', _('Réglages')) }}
+    <a href="{{ url_for('main.logout') }}" class="nav-item"><span class="nav-icon">{{ icon('logout') }}</span><span class="nav-label">{{ _('Déconnexion') }}</span></a>
+  </div>
+</nav>

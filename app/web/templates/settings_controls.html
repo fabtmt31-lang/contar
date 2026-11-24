@@ -1,0 +1,95 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Boutons et manette') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Boutons et manette') }}</h1></div>
+
+{% if mode is none %}
+  <p class="notice">{{ icon('warning') }}<span>{{ _("Cette page ne s'applique qu'une fois la boîte lancée sur le vrai Raspberry Pi, avec une manette USB ou des boutons réellement actifs. Rien à configurer ici pendant les essais sur PC avec le clavier.") }}</span></p>
+{% else %}
+  <p class="lead">
+    {{ _('Contrôle actif :') }} <strong>{{ _(mode_label) }}</strong>.
+    {{ _("Une action peut avoir plusieurs boutons (pratique si l'enfant confond deux boutons voisins). Pour changer un bouton, touchez « Ajouter un bouton » puis appuyez sur le bouton souhaité : il sera détecté automatiquement.") }}
+  </p>
+
+  <div id="capture-banner" class="capture-banner" role="status" hidden>
+    <span id="capture-banner-text">{{ _('Appuyez sur le bouton à assigner…') }}</span>
+    <button type="button" id="capture-cancel" class="btn-icon" aria-label="{{ _('Annuler') }}">{{ icon('close') }}</button>
+  </div>
+
+  {% for action in actions %}
+    <section class="card">
+      <div class="card-head card-head-split">
+        <h2>{{ _(action.label) }}</h2>
+        <button type="button" class="btn btn-ghost btn-capture-start"
+                data-capture-kind="action" data-capture-action="{{ action.key }}"
+                data-capture-label="{{ _(action.label) }}">
+          {{ icon('plus', 18) }}<span>{{ _('Ajouter un bouton') }}</span>
+        </button>
+      </div>
+      <ul class="list">
+        {% for control in action.controls %}
+          <li class="row">
+            <span class="row-main"><span class="row-title">{{ _(control.label) }}</span></span>
+            {% if action.controls|length > 1 %}
+              <form method="post" action="{{ url_for('main.unassign_control') }}">
+                <input type="hidden" name="action" value="{{ action.key }}">
+                <input type="hidden" name="code" value="{{ control.code }}">
+                <button type="submit" class="btn btn-ghost-danger">{{ _('Retirer') }}</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+
+  <section class="card">
+    <h2>{{ _('Extinction (sécurité enfant)') }}</h2>
+    <p class="hint">{{ _("L'extinction n'est jamais déclenchée par un seul bouton : uniquement en maintenant ces deux boutons enfoncés en même temps pendant 2 secondes. Ce principe n'est pas modifiable, seuls les deux boutons ci-dessous le sont.") }}</p>
+    <ul class="list">
+      {% for label in combo_labels %}
+        <li class="row">
+          <span class="row-main"><span class="row-title">{{ _(label) }}</span></span>
+          <button type="button" class="btn btn-ghost btn-capture-start"
+                  data-capture-kind="combo" data-capture-slot="{{ loop.index0 }}"
+                  data-capture-label="{{ _("bouton {n} de l'extinction", n=loop.index) }}">
+            {{ _('Réassigner') }}
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <form method="post" action="{{ url_for('main.reset_controls') }}"
+        onsubmit='return confirm({{ _("Réinitialiser tous les boutons aux réglages d’usine ?")|tojson }})'>
+    <button type="submit" class="btn btn-outline btn-block">{{ icon('undo', 18) }}<span>{{ _("Réinitialiser aux réglages d'usine") }}</span></button>
+  </form>
+
+  <form id="assign-action-form" method="post" action="{{ url_for('main.assign_control') }}" hidden>
+    <input type="hidden" name="action" id="assign-action-field">
+    <input type="hidden" name="code" id="assign-action-code">
+  </form>
+  <form id="assign-combo-form" method="post" action="{{ url_for('main.assign_shutdown_combo') }}" hidden>
+    <input type="hidden" name="slot" id="assign-combo-slot">
+    <input type="hidden" name="code" id="assign-combo-code">
+  </form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if mode is not none %}
+<script>
+  window.CONTROLS_API = {
+    start: "{{ url_for('main.start_control_capture') }}",
+    state: "{{ url_for('main.control_capture_state') }}",
+    cancel: "{{ url_for('main.cancel_control_capture') }}"
+  };
+  window.CONTROLS_TEXT = {
+    press: {{ _('Appuyez sur le bouton pour « {label} »…')|tojson }},
+    found: {{ _('Bouton détecté : {label}. Enregistrement…')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/controls.js') }}?v={{ APP_VERSION }}"></script>
+{% endif %}
+{% endblock %}

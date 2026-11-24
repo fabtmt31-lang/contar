@@ -1,0 +1,31 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Aide et utilisation') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Aide et utilisation') }}</h1></div>
+
+<div class="static-content">
+  <h2>{{ _('Ajouter des histoires ou de la musique') }}</h2>
+  <p>{{ _("Ouvrez « Import » dans le menu, choisissez des fichiers .mp3, .m4a ou .m4b sur votre téléphone ou votre ordinateur, puis touchez « Envoyer ». Les histoires et les albums apparaissent ensuite dans la Bibliothèque.") }}</p>
+
+  <h2>{{ _('Importer avec une clé USB') }}</h2>
+  <p>{{ _("Sur la clé, créez un dossier « Audiolibre » contenant un dossier « Livres » (un fichier = une histoire) et un dossier « Musiques » (un sous-dossier = un album). Branchez la clé sur la boîte : l'écran affiche « Clé prête ». Posez alors le tag maître « Ajouter » pour copier ce qui manque, ou le tag maître « Remplacer » — deux fois de suite — pour que la boîte contienne exactement ce qu'il y a sur la clé. Les mêmes actions sont proposées par des boutons dans « Import ».") }}</p>
+  <p>{{ _("La boîte ne modifie jamais la clé. Ce que « Remplacer » retire reste en réserve jusqu'au prochain import : « Import » permet d'annuler le dernier remplacement. Les deux tags maîtres se déclarent dans « Tags ».") }}</p>
+
+  <h2>{{ _('Associer un tag') }}</h2>
+  <p>{{ _("Dans la Bibliothèque, touchez la pastille « Sans tag » d'une histoire ou d'un album, puis posez le tag sur la boîte. Pour retirer un tag, touchez la pastille « Tag associé ». La page « Tags » montre tous les tags déjà associés.") }}</p>
+
+  <p>{{ _("Dans « Tags », vous pouvez donner un nom à chaque tag (« Loup bleu ») pour le reconnaître. Dans la Bibliothèque, le filtre « Sans tag » regroupe les histoires et les albums qui n'en ont pas encore.") }}</p>
+
+  <h2>{{ _('Lancer une lecture') }}</h2>
+  <p>{{ _("Ouvrez la fiche d'un livre ou d'un morceau pour voir ses informations, puis touchez « Lire ». La page « Lecture » permet ensuite de mettre en pause, d'avancer ou de reculer, et de régler le volume.") }}</p>
+
+  <h2>{{ _('Boutons de la boîte') }}</h2>
+  <p>{{ _("Retour, lecture ou pause, avance, volume moins et plus. Pour la musique, le bouton « avance » passe au morceau suivant de l'album ; le bouton « retour » relance le morceau en cours, ou revient au précédent en cas de double appui rapproché.") }}</p>
+
+  <h2>{{ _('Réglages parents') }}</h2>
+  <p>{{ _('Minuterie de coucher, plages horaires autorisées, plafond de volume, catégories, code PIN et réseau se règlent depuis « Réglages ».') }}</p>
+  <p>{{ _("La minuterie de coucher met la lecture en pause un certain nombre de minutes après le dernier lancement (tag posé ou bouton lecture) : le son baisse doucement, et l'histoire reprendra au même endroit.") }}</p>
+</div>
+{% endblock %}

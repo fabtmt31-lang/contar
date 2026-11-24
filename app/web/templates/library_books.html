@@ -1,0 +1,43 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, tag_pill, library_tabs, tag_filter %}
+{% block title %}{{ _('Histoires') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ _('Bibliothèque') }}</h1>
+  <a href="{{ url_for('main.import_page') }}" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Importer') }}</span></a>
+</div>
+{{ library_tabs('livres') }}
+{{ tag_filter('main.livres', _('Toutes'), total_count, untagged_count, only_untagged) }}
+{% include "_nfc_badge_banner.html" %}
+
+{% if books %}
+  <ul class="list">
+    {% for book in books %}
+      <li class="row">
+        <a href="{{ url_for('main.book_detail', book_id=book['id']) }}" class="row-main">
+          {{ cover(book['cover_url'], book['color_hex'], 'book') }}
+          <span class="row-text">
+            <span class="row-title">{{ book['title'] }}</span>
+            <span class="row-sub">{{ book['author'] }} · {{ book['duration_label'] }}</span>
+          </span>
+        </a>
+        <span class="row-actions">
+          {{ tag_pill('book', book['id'], book['has_tag'], book['tag_name']) }}
+          <form method="post" action="{{ url_for('main.delete_book_route', book_id=book['id']) }}"
+                onsubmit='return confirm({{ _("Supprimer définitivement « {title} » ? Le fichier audio sera effacé de la boîte.", title=book["title"])|tojson }})'>
+            <button type="submit" class="btn-icon" aria-label="{{ _('Supprimer') }}">{{ icon('trash') }}</button>
+          </form>
+        </span>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif only_untagged %}
+  <div class="empty"><p>{{ _('Toutes les histoires ont un tag.') }}</p></div>
+{% else %}
+  <div class="empty">
+    <p>{{ _("Aucune histoire pour l'instant.") }}</p>
+    <a href="{{ url_for('main.import_page') }}" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Importer des histoires') }}</span></a>
+  </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include "_nfc_badge.html" %}{% endblock %}

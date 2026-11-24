@@ -1,0 +1,43 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, tag_pill, back %}
+{% block title %}{{ book['title'] }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.livres', _('Histoires')) }}
+{% include "_nfc_badge_banner.html" %}
+
+<section class="card detail">
+  {{ cover(book['cover_url'], book['color_hex'], 'book', 'lg') }}
+  <div class="stack">
+    <h1>{{ book['title'] }}</h1>
+    <p class="lead">{{ book['author'] }}</p>
+  </div>
+  {{ tag_pill('book', book['id'], book['has_tag'], book['tag_name']) }}
+
+  <dl class="facts">
+    <div><dt>{{ _('Durée') }}</dt><dd>{{ book['duration_label'] }}</dd></div>
+    <div><dt>{{ _('Progression') }}</dt><dd>{{ book['progress_label'] }}{% if book['finished'] %} · {{ _('terminé') }}{% endif %}</dd></div>
+  </dl>
+
+  <form method="post" action="{{ url_for('main.play_book', book_id=book['id']) }}">
+    <button type="submit" class="btn btn-primary btn-block">{{ icon('play', 18) }}<span>{{ _('Lire cette histoire') }}</span></button>
+  </form>
+
+  <form method="post" action="{{ url_for('main.set_book_category', book_id=book['id']) }}" class="field">
+    <label for="category_id">{{ _('Catégorie') }}</label>
+    <select name="category_id" id="category_id" onchange="this.form.submit()">
+      <option value="">{{ _('Aucune') }}</option>
+      {% for category in categories %}
+        <option value="{{ category['id'] }}" {{ 'selected' if category['id'] == book['category_id'] else '' }}>
+          {{ category['icon'] }} {{ category['name'] }}
+        </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <form method="post" action="{{ url_for('main.delete_book_route', book_id=book['id']) }}"
+        onsubmit='return confirm({{ _("Supprimer définitivement « {title} » ? Le fichier audio sera effacé de la boîte, cette action est irréversible.", title=book["title"])|tojson }})'>
+    <button type="submit" class="btn btn-danger btn-block">{{ icon('trash', 18) }}<span>{{ _('Supprimer ce livre') }}</span></button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}{% include "_nfc_badge.html" %}{% endblock %}

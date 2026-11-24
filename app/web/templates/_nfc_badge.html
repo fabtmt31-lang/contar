@@ -1,0 +1,13 @@
+<script>
+  window.NFC_BADGE_API = {
+    start: "{{ url_for('main.start_tag_capture') }}",
+    state: "{{ url_for('main.tag_capture_state') }}",
+    cancel: "{{ url_for('main.cancel_tag_capture') }}",
+    associate: "{{ url_for('main.associate_tag') }}"
+  };
+  window.NFC_BADGE_TEXT = {
+    waiting: {{ _('Posez le tag à associer sur le lecteur…')|tojson }},
+    found: {{ _('Tag détecté, association en cours…')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/nfc_badge.js') }}?v={{ APP_VERSION }}"></script>

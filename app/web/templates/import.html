@@ -1,0 +1,47 @@
+{% extends "app.html" %}
+{% block title %}{{ _('Import') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>{{ _('Import') }}</h1>
+    <p class="lead">{{ _("Par clé USB branchée sur la boîte, ou en envoyant des fichiers depuis cet appareil.") }}</p>
+  </div>
+</div>
+
+<div id="usb-panel" class="stack-lg" data-url="{{ url_for('main.import_usb_panel') }}">
+  {% include "_import_usb.html" %}
+</div>
+
+<div class="section-label">{{ _('Depuis ce téléphone ou cet ordinateur') }}</div>
+
+<div class="cols">
+  <form class="card" method="post" action="{{ url_for('main.upload_books') }}" enctype="multipart/form-data">
+    <div class="card-head">{{ icon('book', 22) }}<h2>{{ _('Histoires') }}</h2></div>
+    <p class="hint">{{ _('Un fichier = une histoire.') }}</p>
+    <div class="field">
+      <label for="book-files">{{ _('Fichiers (.mp3, .m4a, .m4b)') }}</label>
+      <input type="file" id="book-files" name="files" accept=".mp3,.m4a,.m4b" multiple required>
+    </div>
+    <div class="btn-row"><button type="submit" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Envoyer') }}</span></button></div>
+  </form>
+
+  <form class="card" method="post" action="{{ url_for('main.upload_music') }}" enctype="multipart/form-data">
+    <div class="card-head">{{ icon('music', 22) }}<h2>{{ _('Musique') }}</h2></div>
+    <p class="hint">{{ _('Les morceaux envoyés ensemble forment un album.') }}</p>
+    <div class="field">
+      <label for="album-name">{{ _("Nom de l'album (facultatif)") }}</label>
+      <input type="text" id="album-name" name="folder_name" placeholder="{{ _('ex : Comptines') }}">
+    </div>
+    <div class="field">
+      <label for="music-files">{{ _('Fichiers (.mp3, .m4a, .m4b)') }}</label>
+      <input type="file" id="music-files" name="files" accept=".mp3,.m4a,.m4b" multiple required>
+    </div>
+    <div class="btn-row"><button type="submit" class="btn btn-primary">{{ icon('import', 18) }}<span>{{ _('Envoyer') }}</span></button></div>
+  </form>
+</div>
+
+<p class="hint">{{ _("L'envoi peut prendre un moment pour de longs fichiers : gardez cette page ouverte jusqu'à l'affichage de la bibliothèque.") }}</p>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/import.js') }}?v={{ APP_VERSION }}"></script>
+{% endblock %}

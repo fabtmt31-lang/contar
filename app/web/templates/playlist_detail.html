@@ -1,0 +1,126 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, back %}
+{% block title %}{{ playlist['name'] }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.playlists', _('Listes')) }}
+<div class="page-head">
+  <h1>{{ playlist['name'] }}</h1>
+  <form method="post" action="{{ url_for('main.play_playlist_route', playlist_id=playlist['id']) }}">
+    <button type="submit" class="btn btn-primary">{{ icon('play', 18) }}<span>{{ _('Lire cette liste') }}</span></button>
+  </form>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>{{ _('Nom') }}</h2>
+    <form method="post" action="{{ url_for('main.rename_playlist', playlist_id=playlist['id']) }}" class="form">
+      <div class="field">
+        <label for="playlist-name">{{ _('Nom de la liste') }}</label>
+        <input type="text" id="playlist-name" name="name" value="{{ playlist['name'] }}" required>
+      </div>
+      <div class="btn-row"><button type="submit" class="btn btn-outline">{{ _('Enregistrer') }}</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Mode de lecture') }}</h2>
+    <form method="post" action="{{ url_for('main.set_playlist_modes', playlist_id=playlist['id']) }}">
+      <div class="field-row">
+        <label for="playlist-shuffle">{{ _('Ordre aléatoire') }}</label>
+        <input type="checkbox" id="playlist-shuffle" name="shuffle"
+               {{ 'checked' if playlist['shuffle'] else '' }} onchange="this.form.submit()">
+      </div>
+      <div class="field-row">
+        <label for="playlist-loop">{{ _('Lecture en boucle') }}</label>
+        <input type="checkbox" id="playlist-loop" name="loop"
+               {{ 'checked' if playlist['loop'] else '' }} onchange="this.form.submit()">
+      </div>
+    </form>
+  </section>
+</div>
+
+<section class="stack">
+  <h2>{{ _('Contenu') }} ({{ items|length }})</h2>
+  {% if items %}
+    <ul class="list">
+      {% for item in items %}
+        <li class="row">
+          <span class="row-main">
+            {{ cover(item['cover_url'], item['color_hex'], 'book' if item['kind'] == 'book' else 'music') }}
+            <span class="row-text">
+              <span class="row-title">{{ item['title'] }}</span>
+              <span class="row-sub">{{ icon('book' if item['kind'] == 'book' else 'music', 14) }}<span>{{ item['subtitle'] }}</span></span>
+            </span>
+          </span>
+          <span class="row-actions">
+            <form method="post" action="{{ url_for('main.move_playlist_item_up', playlist_id=playlist['id'], entry_id=item['entry_id']) }}">
+              <button type="submit" class="btn-icon" {{ 'disabled' if loop.first else '' }} aria-label="{{ _('Monter') }}">{{ icon('up') }}</button>
+            </form>
+            <form method="post" action="{{ url_for('main.move_playlist_item_down', playlist_id=playlist['id'], entry_id=item['entry_id']) }}">
+              <button type="submit" class="btn-icon" {{ 'disabled' if loop.last else '' }} aria-label="{{ _('Descendre') }}">{{ icon('down') }}</button>
+            </form>
+            <form method="post" action="{{ url_for('main.remove_playlist_item', playlist_id=playlist['id'], entry_id=item['entry_id']) }}">
+              <button type="submit" class="btn-icon" aria-label="{{ _('Retirer') }}">{{ icon('close') }}</button>
+            </form>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty"><p>{{ _("Cette liste est vide pour l'instant. Ajoutez des histoires ou des morceaux ci-dessous.") }}</p></div>
+  {% endif %}
+</section>
+
+{% if available_books %}
+  <section class="stack">
+    <h2>{{ _('Ajouter une histoire') }}</h2>
+    <ul class="list">
+      {% for book in available_books %}
+        <li class="row">
+          <span class="row-main">
+            {{ cover(book['cover_url'], book['color_hex'], 'book') }}
+            <span class="row-text">
+              <span class="row-title">{{ book['title'] }}</span>
+              <span class="row-sub">{{ book['author'] }}</span>
+            </span>
+          </span>
+          <form method="post" action="{{ url_for('main.add_to_playlist', playlist_id=playlist['id']) }}">
+            <input type="hidden" name="kind" value="book">
+            <input type="hidden" name="item_id" value="{{ book['id'] }}">
+            <button type="submit" class="btn btn-ghost">{{ icon('plus', 18) }}<span>{{ _('Ajouter') }}</span></button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{% if available_tracks %}
+  <section class="stack">
+    <h2>{{ _('Ajouter un morceau') }}</h2>
+    <ul class="list">
+      {% for track in available_tracks %}
+        <li class="row">
+          <span class="row-main">
+            {{ cover(track['cover_url'], track['album_color_hex'] or '#8FB6FF', 'music') }}
+            <span class="row-text">
+              <span class="row-title">{{ track['title'] }}</span>
+              <span class="row-sub">{{ track['album_name'] }}</span>
+            </span>
+          </span>
+          <form method="post" action="{{ url_for('main.add_to_playlist', playlist_id=playlist['id']) }}">
+            <input type="hidden" name="kind" value="track">
+            <input type="hidden" name="item_id" value="{{ track['id'] }}">
+            <button type="submit" class="btn btn-ghost">{{ icon('plus', 18) }}<span>{{ _('Ajouter') }}</span></button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+<form method="post" action="{{ url_for('main.delete_playlist', playlist_id=playlist['id']) }}"
+      onsubmit='return confirm({{ _("Supprimer cette liste de lecture ? Les livres et morceaux qu’elle contient ne seront pas supprimés.")|tojson }})'>
+  <button type="submit" class="btn btn-danger btn-block">{{ icon('trash', 18) }}<span>{{ _('Supprimer cette liste') }}</span></button>
+</form>
+{% endblock %}

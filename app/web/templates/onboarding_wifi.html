@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Bienvenue') }} — Wifi — {{ APP_NAME }}{% endblock %}
+{% block body %}
+<main class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-icon">{{ icon('wifi', 32) }}</div>
+    <h1>{{ _('Connexion au Wifi') }}</h1>
+    <p class="section-label">{{ _('Étape {n} sur {total}', n=2, total=4) }}</p>
+    <p class="subtitle">{{ _('Facultatif, vous pourrez le faire plus tard') }}</p>
+    {% if trial and trial.state == 'echec' %}
+      <p class="notice" role="alert" style="text-align: left;">{{ icon('warning') }}<span>
+        {%- if trial.reason == 'mot_de_passe' %}{{ _('Le Wifi « {ssid} » a refusé le mot de passe.', ssid=trial.ssid) }}
+        {%- elif trial.reason == 'introuvable' %}{{ _('Le Wifi « {ssid} » est introuvable : nom mal saisi, ou borne hors de portée.', ssid=trial.ssid) }}
+        {%- else %}{{ _('La boîte n\'a pas réussi à rejoindre le Wifi « {ssid} ».', ssid=trial.ssid) }}{% endif %}
+      </span></p>
+    {% endif %}
+
+    <form method="post" class="form">
+      <div class="field">
+        <label for="wifi_network_select">{{ _('Réseaux détectés') }}</label>
+        <select id="wifi_network_select"
+                onchange="if (this.value) { document.getElementById('wifi_ssid').value = this.value; }">
+          <option value="">
+            {%- if wifi_networks %}{{ _('{n} réseau(x) détecté(s) : en choisir un', n=wifi_networks|length) }}{% else %}{{ _('Aucun réseau détecté : saisissez le nom ci-dessous') }}{% endif -%}
+          </option>
+          {% for net in wifi_networks %}
+            <option value="{{ net.ssid }}">{{ net.ssid }} — {{ net.signal }} %{% if net.secured %} · {{ _('protégé') }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="wifi_ssid">{{ _('Nom du Wifi (SSID)') }}</label>
+        <input type="text" id="wifi_ssid" name="wifi_ssid" value="{{ network.wifi_ssid }}">
+      </div>
+      <div class="field">
+        <label for="wifi_password">{{ _('Mot de passe') }}</label>
+        <input type="password" id="wifi_password" name="wifi_password" value="{{ network.wifi_password }}">
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block"><span>{{ _('Se connecter et continuer') }}</span>{{ icon('arrow-right', 18) }}</button>
+    </form>
+    <form method="post" action="{{ url_for('main.onboarding_wifi_skip') }}">
+      <button type="submit" class="btn btn-outline btn-block">{{ _('Passer cette étape') }}</button>
+    </form>
+    <p class="hint">{{ _("Vous pourrez configurer le Wifi (ou une adresse IP fixe) plus tard depuis Réglages → Réseau. En attendant, la boîte diffuse son propre réseau de secours si elle n'arrive à se connecter à rien.") }}</p>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Réinitialisation usine') }} — {{ APP_NAME }}{% endblock %}
+{% macro lost(icon_name, label) -%}
+  <li class="row"><span class="row-main"><span class="row-icon">{{ icon(icon_name) }}</span><span class="row-title">{{ label }}</span></span></li>
+{%- endmacro %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Réinitialisation usine') }}</h1></div>
+
+<p class="notice">{{ icon('warning') }}<span>{{ _('Cette action est irréversible. Elle efface définitivement :') }}</span></p>
+<ul class="list">
+  {{ lost('book', _('Toutes les histoires (livres audio)')) }}
+  {{ lost('music', _('Toute la musique')) }}
+  {{ lost('tag', _('Les tags et les catégories')) }}
+  {{ lost('list', _('Les listes de lecture')) }}
+  {{ lost('wifi', _('Le Wifi de la maison enregistré')) }}
+  {{ lost('lock', _('Le code PIN')) }}
+  {{ lost('gamepad', _('Le réglage des boutons et de la manette')) }}
+</ul>
+<p class="hint">{{ _("La boîte redémarre automatiquement juste après. Au démarrage suivant, elle demande de créer un nouveau code PIN, propose de se connecter au Wifi, puis affiche quelques écrans d'explication, exactement comme à la toute première utilisation.") }}</p>
+
+<form method="post" class="card card-danger">
+  <div class="field">
+    <label for="confirmation">{{ _('Tapez « {phrase} » pour confirmer', phrase=confirm_phrase) }}</label>
+    <input type="text" id="confirmation" name="confirmation" autocomplete="off" autocapitalize="characters" placeholder="{{ confirm_phrase }}">
+  </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <button type="submit" class="btn btn-danger-solid btn-block">{{ icon('warning', 18) }}<span>{{ _('Réinitialiser et redémarrer') }}</span></button>
+</form>
+{% endblock %}

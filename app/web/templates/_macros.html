@@ -1,0 +1,54 @@
+{#- Petits blocs réutilisés d'une page à l'autre. -#}
+
+{#- Pochette : l'image extraite du fichier audio si elle existe, sinon un
+    carré teinté (couleur de l'élément) avec une icône. -#}
+{% macro cover(url, color, kind='book', size='') -%}
+  {%- set px = {'': 22, 'lg': 40, 'xl': 96}.get(size, 22) -%}
+  {%- if url -%}
+    <img class="cover {{ 'cover-' ~ size if size else '' }}" src="{{ url }}" alt="">
+  {%- else -%}
+    <span class="cover {{ 'cover-' ~ size if size else '' }}" style="--item-color:{{ color or '#8FB6FF' }}">{{ icon({'book': 'book', 'list': 'list'}.get(kind, 'music'), px) }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{#- Pastille de tag d'un livre ou d'un album. Associé : un appui retire le
+    tag (après confirmation). Sans tag : un appui lance la capture (voir
+    static/js/nfc_badge.js, qui repère la classe nfc-badge-off). -#}
+{% macro tag_pill(kind, item_id, has_tag, tag_name='') -%}
+  {%- if has_tag -%}
+    <form method="post" action="{{ url_for('main.dissociate_tag_item') }}"
+          onsubmit='return confirm({{ (_("Retirer le tag de ce livre ?") if kind == "book" else _("Retirer le tag de cet album ?"))|tojson }})'>
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="item_id" value="{{ item_id }}">
+      <button type="submit" class="pill pill-ok" title="{{ _('Retirer le tag') }}">{{ icon('tag', 14) }}<span>{{ tag_name or _('Tag associé') }}</span></button>
+    </form>
+  {%- else -%}
+    <button type="button" class="pill nfc-badge-off" data-nfc-kind="{{ kind }}" data-nfc-item="{{ item_id }}"
+            title="{{ _('Associer un tag') }}"><span>{{ _('Sans tag') }}</span>{{ icon('plus', 14) }}</button>
+  {%- endif -%}
+{%- endmacro %}
+
+{#- Onglets de la bibliothèque. -#}
+{% macro library_tabs(active) -%}
+  <div class="tabs">
+    <a href="{{ url_for('main.livres') }}" class="tab {{ 'is-active' if active == 'livres' else '' }}"{% if active == 'livres' %} aria-current="page"{% endif %}>{{ _('Histoires') }}</a>
+    <a href="{{ url_for('main.musique') }}" class="tab {{ 'is-active' if active == 'musique' else '' }}"{% if active == 'musique' %} aria-current="page"{% endif %}>{{ _('Musique') }}</a>
+    <a href="{{ url_for('main.playlists') }}" class="tab {{ 'is-active' if active == 'listes' else '' }}"{% if active == 'listes' %} aria-current="page"{% endif %}>{{ _('Listes') }}</a>
+  </div>
+{%- endmacro %}
+
+{#- Filtre « Sans tag » de la bibliothèque : n'apparaît que s'il reste des
+    éléments sans tag (ou si le filtre est actif). -#}
+{% macro tag_filter(endpoint, all_label, total, untagged, only_untagged) -%}
+  {%- if untagged or only_untagged -%}
+    <div class="filters">
+      <a href="{{ url_for(endpoint) }}" class="chip {{ '' if only_untagged else 'is-active' }}"{% if not only_untagged %} aria-current="true"{% endif %}>{{ all_label }}<span class="chip-count">{{ total }}</span></a>
+      <a href="{{ url_for(endpoint, filtre='sans-tag') }}" class="chip {{ 'is-active' if only_untagged else '' }}"{% if only_untagged %} aria-current="true"{% endif %}>{{ _('Sans tag') }}<span class="chip-count">{{ untagged }}</span></a>
+    </div>
+  {%- endif -%}
+{%- endmacro %}
+
+{#- Lien de retour en haut d'une sous-page. -#}
+{% macro back(endpoint, label) -%}
+  <a href="{{ url_for(endpoint, **kwargs) }}" class="back-link">{{ icon('arrow-left', 18) }}<span>{{ label }}</span></a>
+{%- endmacro %}

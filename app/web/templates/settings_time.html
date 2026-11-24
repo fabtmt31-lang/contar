@@ -1,0 +1,41 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Minuterie et plages horaires') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Minuterie et plages horaires') }}</h1></div>
+
+<form method="post" class="stack-lg">
+  <section class="card">
+    <h2>{{ _('Minuterie de coucher') }}</h2>
+    <p class="hint">{{ _("Met la lecture en pause ce nombre de minutes après le dernier lancement (tag posé, bouton lecture). Le son baisse doucement à la fin, et l'histoire reprendra au même endroit. Un album ou une liste qui enchaîne tout seul ne relance pas le compteur. 0 = désactivée.") }}</p>
+    <div class="field-row">
+      <label for="sleep_timer_minutes">{{ _('Minutes') }}</label>
+      <input type="number" id="sleep_timer_minutes" name="sleep_timer_minutes" min="0" max="180"
+             value="{{ sleep_timer_minutes }}">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Plages horaires autorisées') }}</h2>
+    <p class="hint">{{ _('Si activée pour un jour, la boîte ne fonctionne que dans la plage indiquée.') }}</p>
+    <ul class="schedule-list">
+      {% for day, day_name, schedule in schedules %}
+        <li class="schedule-row">
+          <label class="schedule-day">
+            <input type="checkbox" name="day_{{ day }}_enabled" {{ 'checked' if schedule.enabled else '' }}>
+            {{ _(day_name) }}
+          </label>
+          <span class="schedule-hours">
+            <input type="number" name="day_{{ day }}_start" min="0" max="23" value="{{ schedule.start_hour }}" aria-label="{{ _('Début') }}"> h
+            <span>–</span>
+            <input type="number" name="day_{{ day }}_end" min="0" max="23" value="{{ schedule.end_hour }}" aria-label="{{ _('Fin') }}"> h
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <button type="submit" class="btn btn-primary btn-block">{{ _('Enregistrer') }}</button>
+</form>
+{% endblock %}

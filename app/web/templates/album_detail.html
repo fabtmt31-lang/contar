@@ -1,0 +1,40 @@
+{% extends "app.html" %}
+{% from "_macros.html" import cover, tag_pill, back %}
+{% block title %}{{ album['name'] }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.musique', _('Musique')) }}
+{% include "_nfc_badge_banner.html" %}
+
+<div class="album-heading">
+  {{ cover(album['cover_url'], album['color_hex'], 'music', 'lg') }}
+  <div class="stack">
+    <h1>{{ album['name'] }}</h1>
+    <div>{{ tag_pill('album', album['id'], album['has_tag'], album['tag_name']) }}</div>
+  </div>
+</div>
+
+{% if tracks %}
+  <ul class="list">
+    {% for track in tracks %}
+      <li class="row row-link">
+        <a href="{{ url_for('main.track_detail', track_id=track['id']) }}" class="row-main">
+          {{ cover(track['cover_url'], album['color_hex'], 'music') }}
+          <span class="row-text">
+            <span class="row-title">{{ track['title'] }}</span>
+            <span class="row-sub">{% if track['artist'] %}{{ track['artist'] }} · {% endif %}{{ track['duration_label'] }}</span>
+          </span>
+        </a>
+        <span class="row-chevron">{{ icon('chevron') }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty"><p>{{ _('Aucun morceau dans cet album.') }}</p></div>
+{% endif %}
+
+<form method="post" action="{{ url_for('main.delete_album_route', album_id=album['id']) }}"
+      onsubmit='return confirm({{ _("Supprimer définitivement l’album « {name} » et tous ses morceaux ? Les fichiers audio seront effacés de la boîte, cette action est irréversible.", name=album["name"])|tojson }})'>
+  <button type="submit" class="btn btn-danger btn-block">{{ icon('trash', 18) }}<span>{{ _('Supprimer cet album') }}</span></button>
+</form>
+{% endblock %}
+{% block scripts %}{% include "_nfc_badge.html" %}{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Mentions légales') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Mentions légales') }}</h1></div>
+
+<div class="static-content">
+  <p><em>{{ _("Modèle de base à adapter : ceci n'est pas un avis juridique. Pour un usage au-delà du cadre strictement familial et privé, faites relire ce texte par un professionnel.") }}</em></p>
+
+  <h2>{{ _('Usage privé') }}</h2>
+  <p>{{ _('Cette application est un projet familial à usage privé, non commercial. Elle ne collecte, ne transmet et ne partage aucune donnée avec un tiers ou sur Internet : tout reste stocké localement sur cet appareil.') }}</p>
+
+  <h2>{{ _('Contenu') }}</h2>
+  <p>{{ _("Les fichiers audio déposés dans cette bibliothèque restent la propriété de leurs ayants droit respectifs. Assurez-vous de disposer du droit d'utiliser les fichiers que vous y déposez.") }}</p>
+
+  <h2>{{ _('Responsabilité') }}</h2>
+  <p>{{ _('Cette boîte est un jouet électronique. Comme pour tout appareil électrique destiné à un usage par des enfants, une supervision adulte raisonnable est recommandée.') }}</p>
+
+  <h2>{{ _('Polices de caractères') }}</h2>
+  <p>{{ _("L'interface utilise les polices Bricolage Grotesque et Figtree, distribuées sous licence SIL Open Font License 1.1 et embarquées dans la boîte.") }}</p>
+
+  <h2>{{ _('Contact') }}</h2>
+  <p>{{ _('À compléter avec vos propres coordonnées si besoin.') }}</p>
+</div>
+{% endblock %}

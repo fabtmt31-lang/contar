@@ -1,0 +1,14 @@
+{#- Gabarit des pages de l'administration : menu (à gauche sur grand écran,
+    en bas sur téléphone) + contenu. Les pages hors menu (connexion,
+    assistant de bienvenue) étendent directement base.html. -#}
+{% extends "base.html" %}
+{% block body %}
+<div class="app">
+  {% include "_nav.html" %}
+  <main class="app-main">
+    <div class="mobile-bar">{{ logo(32) }}<span class="brand-word">contar</span></div>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% block scripts %}{% endblock %}
+{% endblock %}

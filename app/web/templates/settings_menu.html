@@ -1,0 +1,72 @@
+{% extends "app.html" %}
+{% block title %}{{ _('Réglages') }} — {{ APP_NAME }}{% endblock %}
+{% macro link(endpoint, icon_name, label) -%}
+  <li class="row row-link">
+    <a href="{{ url_for(endpoint) }}" class="row-main"><span class="row-icon">{{ icon(icon_name) }}</span><span class="row-title">{{ label }}</span></a>
+    <span class="row-chevron">{{ icon('chevron') }}</span>
+  </li>
+{%- endmacro %}
+{% block content %}
+<div class="page-head"><h1>{{ _('Réglages') }}</h1></div>
+
+<section class="card">
+  <h2>{{ _('Général') }}</h2>
+  <form method="post" action="{{ url_for('main.set_language') }}" class="field-row">
+    <label for="language">{{ _("Langue de l'interface") }}</label>
+    <select name="language" id="language" onchange="this.form.submit()">
+      {% for code, label in language_labels.items() %}
+        <option value="{{ code }}" {{ 'selected' if code == language else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% if storage.available %}
+    <div class="field-row">
+      <span>{{ _('Espace utilisé') }}</span>
+      <strong{% if storage.warning %} class="error"{% endif %}>{{ storage.used_gb }} {{ _('Go') }} / {{ storage.total_gb }} {{ _('Go') }} ({{ storage.percent_used }} %)</strong>
+    </div>
+    {% if storage.warning %}
+      <p class="notice">{{ icon('warning') }}<span>{{ _("Espace bientôt saturé ({free} Go restants) : pensez à retirer des histoires ou des musiques peu utilisées, ou à agrandir la carte SD.", free=storage.free_gb) }}</span></p>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="stack">
+  <div class="section-label">{{ _('Configuration') }}</div>
+  <ul class="list">
+    {{ link('main.settings_time', 'clock', _('Minuterie et plages horaires')) }}
+    {{ link('main.settings_audio', 'speaker', _('Volume et sortie audio')) }}
+    {{ link('main.settings_network', 'wifi', _('Réseau')) }}
+    {{ link('main.settings_controls', 'gamepad', _('Boutons et manette')) }}
+    {{ link('main.settings_energie', 'battery', _('Énergie')) }}
+    {{ link('main.settings_pin', 'lock', _('Code PIN')) }}
+    {{ link('main.settings_categories', 'folder', _('Catégories')) }}
+  </ul>
+</section>
+
+<section class="stack">
+  <div class="section-label">{{ _('À propos') }}</div>
+  <ul class="list">
+    {{ link('main.help_page', 'help', _('Aide et utilisation')) }}
+    {{ link('main.legal_notice', 'document', _('Mentions légales')) }}
+  </ul>
+  <p class="hint">Contar {{ APP_VERSION }} · Audiolibre</p>
+</section>
+
+<section class="card">
+  <h2>{{ _('Session et extinction') }}</h2>
+  <form method="post" action="{{ url_for('main.force_logout') }}">
+    <button type="submit" class="btn btn-outline btn-block">{{ icon('logout', 18) }}<span>{{ _('Se déconnecter') }}</span></button>
+  </form>
+  <form method="post" action="{{ url_for('main.shutdown_pi') }}"
+        onsubmit='return confirm({{ _("Éteindre la boîte maintenant ?")|tojson }})'>
+    <button type="submit" class="btn btn-danger btn-block">{{ icon('power', 18) }}<span>{{ _('Éteindre la boîte à histoires') }}</span></button>
+  </form>
+  <p class="hint">{{ _("Il faudra débrancher puis rebrancher la boîte à histoires pour qu'elle refonctionne.") }}</p>
+</section>
+
+<section class="card card-danger">
+  <h2>{{ _('Zone de danger') }}</h2>
+  <p class="hint">{{ _("Efface TOUT (histoires, musique, tags, listes de lecture, réglages, Wifi, code PIN) pour confier la boîte à quelqu'un d'autre. Irréversible.") }}</p>
+  <a href="{{ url_for('main.factory_reset_confirm') }}" class="btn btn-danger btn-block">{{ icon('warning', 18) }}<span>{{ _('Réinitialisation usine') }}</span></a>
+</section>
+{% endblock %}

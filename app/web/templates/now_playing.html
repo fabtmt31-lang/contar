@@ -1,0 +1,74 @@
+{% extends "app.html" %}
+{% block title %}{{ _('Lecture en cours') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<section class="player" id="now-playing" data-state="loading">
+  <span id="playlist-badge" class="pill pill-new" hidden>{{ icon('list', 14) }}<span id="playlist-badge-name"></span></span>
+  <span id="sleep-badge" class="pill" hidden>{{ icon('moon', 14) }}<span id="sleep-badge-text"></span></span>
+
+  <div class="cover cover-xl player-cover" id="cover" style="--item-color:#8FB6FF">
+    <img id="cover-image" alt="" hidden>
+    <span id="cover-icon-book">{{ icon('book', 96) }}</span>
+    <span id="cover-icon-music" hidden>{{ icon('music', 96) }}</span>
+  </div>
+
+  <div class="player-titles">
+    <h1 id="title">{{ _('Chargement…') }}</h1>
+    <p id="subtitle" class="subtitle"></p>
+  </div>
+
+  <div class="progress-wrap">
+    <input type="range" id="progress" min="0" max="100" value="0" aria-label="{{ _('Avancement') }}">
+    <div class="time-row">
+      <span id="position-label">0:00</span>
+      <span id="duration-label">0:00</span>
+    </div>
+  </div>
+
+  <div class="transport">
+    <button type="button" id="btn-back" class="btn-round" aria-label="{{ _('Reculer de 10 secondes') }}">
+      <span data-mode="book">{{ icon('back', 22) }}</span><span data-mode="book">10 s</span>
+      <span data-mode="track" hidden>{{ icon('prev', 24) }}</span>
+    </button>
+    <button type="button" id="btn-toggle" class="btn-round btn-round-lg" aria-label="{{ _('Lecture ou pause') }}">
+      <span data-icon="play">{{ icon('play', 36) }}</span>
+      <span data-icon="pause" hidden>{{ icon('pause', 36) }}</span>
+    </button>
+    <button type="button" id="btn-forward" class="btn-round" aria-label="{{ _('Avancer de 10 secondes') }}">
+      <span data-mode="book">{{ icon('forward', 22) }}</span><span data-mode="book">10 s</span>
+      <span data-mode="track" hidden>{{ icon('next', 24) }}</span>
+    </button>
+  </div>
+
+  <div class="volume-row">
+    <button type="button" id="vol-down" class="btn-icon" aria-label="{{ _('Baisser le volume') }}">{{ icon('volume-low', 22) }}</button>
+    <div class="volume-track"><div id="volume-fill" class="volume-fill"></div></div>
+    <button type="button" id="vol-up" class="btn-icon" aria-label="{{ _('Monter le volume') }}">{{ icon('volume-high', 22) }}</button>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.API = {
+    state: "{{ url_for('main.api_state') }}",
+    play: "{{ url_for('main.api_play') }}",
+    toggle: "{{ url_for('main.api_toggle') }}",
+    seek: "{{ url_for('main.api_seek') }}",
+    skipForward: "{{ url_for('main.api_skip_forward') }}",
+    skipBack: "{{ url_for('main.api_skip_back') }}",
+    volume: "{{ url_for('main.api_volume') }}"
+  };
+  window.PLAYER_TEXT = {
+    emptyTitle: {{ _("Aucune histoire pour l'instant")|tojson }},
+    emptySubtitle: {{ _('Direction la bibliothèque !')|tojson }},
+    back10: {{ _('Reculer de 10 secondes')|tojson }},
+    forward10: {{ _('Avancer de 10 secondes')|tojson }},
+    prevTrack: {{ _('Morceau précédent (double appui) ou relancer ce morceau')|tojson }},
+    nextTrack: {{ _('Morceau suivant')|tojson }},
+    sleepMinutes: {{ _('Pause dans {n} min')|tojson }},
+    sleepSoon: {{ _("Pause dans moins d'une minute")|tojson }},
+    play: {{ _('Lire')|tojson }},
+    pause: {{ _('Pause')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/player.js') }}?v={{ APP_VERSION }}"></script>
+{% endblock %}

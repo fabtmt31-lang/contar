@@ -1,0 +1,110 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Volume et sortie audio') }} — {{ APP_NAME }}{% endblock %}
+{%- set kind_labels = {"gpio": _('Haut-parleurs'), "jack": _('Casque (jack)'), "hdmi1": "HDMI 1", "hdmi2": "HDMI 2"} -%}
+{%- set kind_icons = {"gpio": "speaker", "jack": "headphones", "hdmi1": "display", "hdmi2": "display"} -%}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Volume et sortie audio') }}</h1></div>
+
+<section class="card">
+  <h2>{{ _('Volume maximum') }}</h2>
+  <form method="post" action="{{ url_for('main.set_max_volume_route') }}" class="form">
+    <div class="field-row">
+      <label for="max_volume">{{ _('Plafond (%)') }}</label>
+      <input type="number" id="max_volume" name="max_volume" min="10" max="100" value="{{ max_volume }}">
+    </div>
+    <p class="hint">{{ _('Le volume ne pourra jamais dépasser cette valeur, quel que soit le bouton pressé. 100 % par défaut (pas de limite).') }}</p>
+    <div class="btn-row"><button type="submit" class="btn btn-primary">{{ _('Enregistrer') }}</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>{{ _('Tonalité du haut-parleur') }}</h2>
+  <p class="hint">{{ _("Pour corriger le son du haut-parleur de la boîte : réglez à l'oreille pendant une lecture, l'effet est immédiat. Au casque ou en HDMI, le son n'est pas modifié. Renforcer une bande baisse un peu le volume général, pour éviter la saturation.") }}</p>
+  <form method="post" action="{{ url_for('main.set_tone_route') }}" class="form" id="tone-form">
+    {% for band, label in [('bass', _('Graves')), ('mid', _('Médiums')), ('treble', _('Aigus'))] %}
+      <div class="tone-row">
+        <label for="tone-{{ band }}">{{ label }}</label>
+        <input type="range" id="tone-{{ band }}" name="{{ band }}" min="-{{ tone_limit }}" max="{{ tone_limit }}" step="1" value="{{ tone[band] }}">
+        <output for="tone-{{ band }}" class="tone-value">{{ '%+d'|format(tone[band]) if tone[band] else '0' }} dB</output>
+      </div>
+    {% endfor %}
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary">{{ _('Enregistrer') }}</button>
+      <button type="submit" name="reset" value="1" class="btn btn-outline">{{ _('Remettre à plat') }}</button>
+    </div>
+  </form>
+  <p class="hint">{{ _("Un petit haut-parleur donne peu de graves tant qu'il n'est pas monté dans un boîtier fermé : le réglage aide, le boîtier fait le reste.") }}</p>
+</section>
+
+<section class="card">
+  <h2>{{ _('Sortie actuelle') }}</h2>
+  <div class="field-row">
+    <span>{{ current.label if current else _("Réglage d'usine (haut-parleurs, sauf casque branché)") }}</span>
+    {% if current and current.kind in kind_labels %}
+      <span class="pill">{{ icon(kind_icons[current.kind], 14) }}<span>{{ kind_labels[current.kind] }}</span></span>
+    {% endif %}
+  </div>
+  <p class="hint">{{ _("Un changement de sortie redémarre automatiquement le lecteur (quelques secondes) pour être pris en compte. Pas besoin de redémarrer la boîte vous-même, mais une lecture en cours sera interrompue.") }}</p>
+</section>
+
+<section class="card">
+  <h2>{{ _('Sortie par défaut') }}</h2>
+  <p class="hint">{{ _("Un casque branché (via l'adaptateur USB) prend toujours la priorité sur ce réglage, dès qu'il est détecté, y compris en cours de lecture. Ce choix ne sert qu'à départager les haut-parleurs et les sorties HDMI quand aucun casque n'est branché.") }}</p>
+  <form method="post" action="{{ url_for('main.set_audio_output_preference') }}" class="form">
+    <div class="field-row">
+      <label for="preference">{{ _('Sortie') }}</label>
+      <select id="preference" name="preference">
+        <option value="gpio" {% if preference == "gpio" %}selected{% endif %}>{{ _('Haut-parleurs') }}</option>
+        <option value="hdmi1" {% if preference == "hdmi1" %}selected{% endif %}>HDMI 1</option>
+        <option value="hdmi2" {% if preference == "hdmi2" %}selected{% endif %}>HDMI 2</option>
+      </select>
+    </div>
+    <div class="btn-row"><button type="submit" class="btn btn-outline">{{ _('Valider') }}</button></div>
+  </form>
+</section>
+
+<section class="stack">
+  <div class="section-label">{{ _('Sorties détectées') }}</div>
+  {% if outputs %}
+    <ul class="list">
+      {% for output in outputs %}
+        <li class="row">
+          <span class="row-main">
+            <span class="row-icon">{{ icon(kind_icons.get(output.kind, 'speaker')) }}</span>
+            <span class="row-title">{{ output.label }}</span>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty"><p>{{ _('Aucune sortie détectée (normal sur un PC de développement : cette liste ne se remplit que sur le vrai Raspberry Pi).') }}</p></div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Bluetooth</h2>
+  <p class="hint">{{ _("Désactivé au niveau matériel (économie d'énergie et de chaleur, voir Réglages → Énergie) : les tentatives de reconnexion automatique échouaient de façon persistante, et la fonction n'était plus utilisée par la boîte.") }}</p>
+</section>
+
+<section class="card">
+  <h2>{{ _('Sortie manuelle (avancé)') }}</h2>
+  <p class="hint">
+    {{ _('Pour les cas non couverts ci-dessus : indiquez directement une cible ALSA, par exemple') }} <code>hw:Device,0</code>.
+    {{ _("Ce réglage est écrasé au prochain branchement ou débranchement d'un casque, ou au prochain passage du sélecteur ci-dessus.") }}
+  </p>
+  <form method="post" action="{{ url_for('main.apply_audio_output') }}" class="form">
+    <div class="field">
+      <label for="manual_alsa_target">{{ _('Cible ALSA') }}</label>
+      <input type="text" id="manual_alsa_target" name="alsa_target" placeholder="hw:Device,0">
+    </div>
+    <input type="hidden" name="kind" value="autre">
+    <input type="hidden" name="label" value="Sortie manuelle">
+    <div class="btn-row"><button type="submit" class="btn btn-outline">{{ _('Utiliser cette cible') }}</button></div>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tone.js') }}?v={{ APP_VERSION }}"></script>
+{% endblock %}

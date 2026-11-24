@@ -1,0 +1,158 @@
+{% extends "app.html" %}
+{% from "_macros.html" import back %}
+{% block title %}{{ _('Réseau') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{{ back('main.reglages', _('Réglages')) }}
+<div class="page-head"><h1>{{ _('Réseau') }}</h1></div>
+
+{% if trial %}
+  {% if trial.state == 'ok' %}
+    <p class="notice notice-ok" role="status">{{ icon('check') }}<span>{{ _('La boîte est reliée au Wifi « {ssid} ».', ssid=trial.ssid) }}{% if trial.ip %} {{ _('Son adresse : {ip}.', ip=trial.ip) }}{% endif %}</span></p>
+  {% else %}
+    <p class="notice" role="alert">{{ icon('warning') }}<span>
+      {%- if trial.reason == 'mot_de_passe' %}{{ _('Le Wifi « {ssid} » a refusé le mot de passe.', ssid=trial.ssid) }}
+      {%- elif trial.reason == 'introuvable' %}{{ _('Le Wifi « {ssid} » est introuvable : nom mal saisi, ou borne hors de portée.', ssid=trial.ssid) }}
+      {%- elif trial.reason == 'nom_reserve' %}{{ _('Ce nom est celui du réseau de secours de la boîte : choisissez le Wifi de la maison.') }}
+      {%- else %}{{ _('La boîte n\'a pas réussi à rejoindre le Wifi « {ssid} ».', ssid=trial.ssid) }}{% endif %}
+      {{ _('Rien n\'a été changé : la boîte est revenue à son réglage précédent.') }}
+    </span></p>
+  {% endif %}
+{% endif %}
+
+<section class="card">
+  <h2>{{ _('État actuel') }}</h2>
+  <div class="field-row">
+    <span>{{ _('Wifi connecté') }}</span>
+    <strong>{{ wifi_status.connected_ssid or _('Non connecté') }}</strong>
+  </div>
+  {% if wifi_status.ip_address %}
+    <div class="field-row">
+      <span>{{ _('Adresse IP') }}</span>
+      <strong>{{ wifi_status.ip_address }}</strong>
+    </div>
+  {% endif %}
+  {% if fallback_status.active %}
+    <div class="field-row">
+      <span>{{ _('Mode actuel') }}</span>
+      <span class="pill pill-warn">{{ icon('wifi', 14) }}<span>{{ _("Point d'accès de secours actif") }}</span></span>
+    </div>
+  {% endif %}
+</section>
+
+<p class="lead">{{ _("Un nouveau Wifi est d'abord essayé : pendant une minute environ, la boîte n'est plus joignable. S'il est refusé, elle revient toute seule à son réglage précédent ou rouvre son réseau de secours. Le résultat s'affiche aussi sur l'écran de la boîte.") }}</p>
+
+<form method="post" class="stack-lg">
+  <section class="card">
+    <h2>{{ _('Nom de la boîte') }}</h2>
+    <div class="field">
+      <label for="hostname">{{ _('Nom de la boîte sur le réseau') }}</label>
+      <input type="text" id="hostname" name="hostname" value="{{ network.hostname }}" placeholder="contar">
+    </div>
+    <p class="hint">
+      {{ _('Accessible ensuite via') }} <code>http://{{ network.hostname }}.local</code>.
+      {{ _("Cela ne fonctionne pas depuis tous les appareils : automatique sur iPhone, iPad, Mac et sur un PC Linux, nécessite d'installer « Bonjour » sur Windows, et pas toujours fiable sur Android. Si ça ne marche pas, utilisez plutôt l'adresse IP affichée dans « État actuel ».") }}
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Wifi de la maison') }}</h2>
+    {% if fallback_status.active %}
+      <p class="notice">{{ icon('wifi') }}<span>{{ _("Vous êtes connecté via le point d'accès de secours : la boîte n'a qu'une seule antenne Wifi, qui ne peut pas diffuser ce point d'accès et chercher d'autres réseaux en même temps. La liste ci-dessous restera donc vide. Saisissez le nom et le mot de passe de votre Wifi directement : la boîte s'y connectera et coupera d'elle-même le point d'accès de secours dès que ça fonctionne.") }}</span></p>
+    {% endif %}
+    <div class="field">
+      <label for="wifi_network_select">{{ _('Réseaux Wifi détectés à proximité') }}</label>
+      <select id="wifi_network_select"
+              onchange="if (this.value) { document.getElementById('wifi_ssid').value = this.value; }">
+        <option value="">
+          {%- if wifi_networks %}{{ _('{n} réseau(x) détecté(s) : en choisir un', n=wifi_networks|length) }}
+          {%- elif fallback_status.active %}{{ _("Recherche indisponible via le point d'accès de secours : saisissez le nom ci-dessous") }}
+          {%- else %}{{ _('Aucun réseau détecté : saisissez le nom ci-dessous') }}{% endif -%}
+        </option>
+        {% for net in wifi_networks %}
+          <option value="{{ net.ssid }}" {{ 'selected' if net.ssid == network.wifi_ssid else '' }}>
+            {{ net.ssid }} — {{ net.signal }} %{% if net.secured %} · {{ _('protégé') }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if not fallback_status.active %}
+      <p class="hint">
+        <a href="{{ url_for('main.settings_network') }}">{{ _('Rafraîchir la liste') }}</a>.
+        {{ _("Vous pouvez aussi saisir le nom directement ci-dessous si votre réseau n'apparaît pas (Wifi caché, ou hors de portée).") }}
+      </p>
+    {% endif %}
+    <div class="field">
+      <label for="wifi_ssid">{{ _('Nom du Wifi de la maison (SSID)') }}</label>
+      <input type="text" id="wifi_ssid" name="wifi_ssid" value="{{ network.wifi_ssid }}">
+    </div>
+    <div class="field">
+      <label for="wifi_password">{{ _('Mot de passe Wifi') }}</label>
+      <input type="password" id="wifi_password" name="wifi_password" value="{{ network.wifi_password }}">
+    </div>
+    {% if network.wifi_ssid %}
+      <button type="submit" form="forget-wifi-form" class="btn btn-danger btn-block"
+              onclick='return confirm({{ _("Oublier le réseau « {ssid} » ?", ssid=network.wifi_ssid)|tojson }})'>
+        {{ icon('trash', 18) }}<span>{{ _('Oublier ce réseau') }}</span>
+      </button>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Adresse IP') }}</h2>
+    <div class="field-row">
+      <label for="ip_mode">{{ _('Attribution') }}</label>
+      <select id="ip_mode" name="ip_mode" onchange="document.getElementById('static-ip-fields').hidden = this.value !== 'static'">
+        <option value="dhcp" {{ 'selected' if network.ip_mode != 'static' else '' }}>{{ _('Automatique (DHCP)') }}</option>
+        <option value="static" {{ 'selected' if network.ip_mode == 'static' else '' }}>{{ _('Manuelle (IP fixe)') }}</option>
+      </select>
+    </div>
+
+    <div id="static-ip-fields" class="form" {{ 'hidden' if network.ip_mode != 'static' else '' }}>
+      <div class="field">
+        <label for="static_ip">{{ _('Adresse IP') }}</label>
+        <input type="text" id="static_ip" name="static_ip" value="{{ network.static_ip }}" placeholder="192.168.1.50">
+      </div>
+      <div class="field">
+        <label for="static_netmask">{{ _('Masque de sous-réseau') }}</label>
+        <input type="text" id="static_netmask" name="static_netmask" value="{{ network.static_netmask }}" placeholder="255.255.255.0">
+      </div>
+      <div class="field">
+        <label for="static_gateway">{{ _('Passerelle') }}</label>
+        <input type="text" id="static_gateway" name="static_gateway" value="{{ network.static_gateway }}" placeholder="192.168.1.1">
+      </div>
+      <div class="field">
+        <label for="static_dns">DNS</label>
+        <input type="text" id="static_dns" name="static_dns" value="{{ network.static_dns }}" placeholder="192.168.1.1,1.1.1.1">
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>{{ _("Point d'accès de secours") }}</h2>
+    <p class="hint">
+      {{ _("Si la boîte n'arrive pas à se connecter au Wifi ci-dessus (mauvais mot de passe, borne hors de portée, ou pas encore configuré), elle crée automatiquement son propre réseau Wifi le temps d'être reconfigurée. Son nom et son mot de passe s'affichent sur l'écran de la boîte. Connectez-vous-y depuis un téléphone : la page de la boîte s'ouvre en général toute seule ; sinon, ouvrez") }}
+      <code>http://10.42.0.1</code>.
+    </p>
+    <div class="field-row">
+      <label for="fallback_enabled">{{ _("Activer le point d'accès de secours") }}</label>
+      <input type="checkbox" id="fallback_enabled" name="fallback_enabled" {{ 'checked' if fallback.enabled else '' }}>
+    </div>
+    <div class="field">
+      <label for="fallback_ssid">{{ _('Nom du réseau de secours') }}</label>
+      <input type="text" id="fallback_ssid" name="fallback_ssid" value="{{ fallback.ssid }}">
+    </div>
+    <div class="field">
+      <label for="fallback_password">{{ _('Mot de passe du réseau de secours') }}</label>
+      <input type="text" id="fallback_password" name="fallback_password" value="{{ fallback.password }}" minlength="8">
+    </div>
+    <p class="hint">{{ _('8 caractères minimum (obligatoire pour un Wifi protégé).') }}</p>
+  </section>
+
+  <button type="submit" class="btn btn-primary btn-block">{{ _('Enregistrer') }}</button>
+</form>
+
+{#- Formulaire séparé (HTML n'autorise pas un formulaire dans un autre) :
+    le bouton « Oublier ce réseau » plus haut y est rattaché par son
+    attribut form=. -#}
+<form id="forget-wifi-form" method="post" action="{{ url_for('main.forget_wifi') }}" hidden></form>
+{% endblock %}
